@@ -8,19 +8,25 @@
 ## 📋 Quick Reference
 
 ### Start Reading With These Files
-1. **docs/FINAL_REPORT.md** (8.3 KB)
+1. **docs/ARCHITECTURE.md**
+   - Current core-vs-control-plane structure
+   - Profile and packaging boundaries
+   - Shared deployment guidance
+   - Next architecture roadmap
+
+2. **docs/FINAL_REPORT.md** (8.3 KB)
    - Comprehensive executive summary
    - Complete deployment details
    - Resource inventory and metrics
    - Integration instructions
 
-2. **docs/MCP_SERVER_START_GUIDE.md** (4.2 KB)
+3. **docs/MCP_SERVER_START_GUIDE.md** (4.2 KB)
    - How to run the server
    - Integration with Cursor and Claude
    - Available tools reference
    - Troubleshooting guide
 
-3. **docs/RESOURCES_SUMMARY.md** (2.9 KB)
+4. **docs/RESOURCES_SUMMARY.md** (2.9 KB)
    - Quick resource overview
    - Cluster details
    - Running/stopped VMs list

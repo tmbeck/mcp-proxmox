@@ -24,6 +24,7 @@ from .tool_profiles import (
     PROFILE_DESCRIPTIONS,
     apply_profiles_to_server,
     resolve_profiles,
+    validate_profile_dependencies,
 )
 
 
@@ -226,6 +227,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     try:
         active_profiles = resolve_profiles(args.profile)
+        validate_profile_dependencies(active_profiles)
     except ValueError as exc:
         parser.error(str(exc))
 

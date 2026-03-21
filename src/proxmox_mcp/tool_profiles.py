@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import os
 from typing import Iterable, Sequence
 
@@ -69,6 +70,20 @@ OPTIONAL_PROFILE_TOOL_NAMES: dict[str, set[str]] = {
     },
 }
 
+PROFILE_REQUIRED_MODULES: dict[str, tuple[str, ...]] = {
+    "control-plane": ("fastapi", "httpx", "uvicorn", "jwt"),
+    "observability": (
+        "prometheus_client",
+        "grafana_api",
+        "elasticsearch",
+        "pandas",
+        "numpy",
+    ),
+    "automation": ("git", "ansible_runner", "netaddr", "croniter", "schedule"),
+    "security": ("pyotp", "qrcode", "hvac", "OpenSSL", "cryptography"),
+    "ai": ("sklearn", "joblib", "pandas", "numpy"),
+}
+
 
 def _split_profile_values(values: Sequence[str]) -> list[str]:
     tokens: list[str] = []
@@ -113,6 +128,35 @@ def disabled_tools_for_profiles(active_profiles: Iterable[str]) -> set[str]:
         if profile_name not in active:
             disabled.update(tool_names)
     return disabled
+
+
+def validate_profile_dependencies(active_profiles: Iterable[str]) -> None:
+    active = set(active_profiles)
+    missing_by_profile: dict[str, list[str]] = {}
+
+    for profile_name in sorted(active - {CORE_PROFILE}):
+        required_modules = PROFILE_REQUIRED_MODULES.get(profile_name, ())
+        missing = [
+            module_name
+            for module_name in required_modules
+            if importlib.util.find_spec(module_name) is None
+        ]
+        if missing:
+            missing_by_profile[profile_name] = missing
+
+    if not missing_by_profile:
+        return
+
+    requested_profiles = ",".join(sorted(missing_by_profile))
+    details = "; ".join(
+        f"{profile}: missing {', '.join(modules)}"
+        for profile, modules in missing_by_profile.items()
+    )
+    raise ValueError(
+        f"Selected profile dependencies are not installed ({details}). "
+        f"Install the matching extras, e.g. `uv tool install '.[{requested_profiles}]'`, "
+        "or use `uv sync --dev` in the repository."
+    )
 
 
 async def get_registered_tool_names(server: FastMCP) -> set[str]:

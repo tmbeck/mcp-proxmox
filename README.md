@@ -25,6 +25,7 @@ Install modes:
 - `uv tool install '.[security]'` adds MFA/certificate/secret-store helpers.
 - `uv tool install '.[ai]'` adds AI/optimization helpers.
 - `uv tool install '.[full]'` installs every optional feature group.
+- If you select a non-core profile without its matching extra installed, the server now fails fast with a clear install hint.
 
 For a local tool-style install, you can also use:
 

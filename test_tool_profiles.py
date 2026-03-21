@@ -4,6 +4,7 @@ from proxmox_mcp.tool_profiles import (
     CORE_PROFILE,
     disabled_tools_for_profiles,
     resolve_profiles,
+    validate_profile_dependencies,
 )
 
 
@@ -49,3 +50,32 @@ def test_disabled_tools_for_composed_profiles_keeps_requested_extensions() -> No
     assert "proxmox-setup-monitoring" not in disabled
     assert "proxmox-terraform-plan" in disabled
     assert "proxmox-ai-scaling" in disabled
+
+
+def test_validate_profile_dependencies_allows_core_only() -> None:
+    validate_profile_dependencies((CORE_PROFILE,))
+
+
+def test_validate_profile_dependencies_reports_missing_modules(monkeypatch) -> None:
+    import proxmox_mcp.tool_profiles as tool_profiles
+
+    real_find_spec = tool_profiles.importlib.util.find_spec
+
+    def fake_find_spec(name: str):
+        if name in {"fastapi", "httpx"}:
+            return None
+        return real_find_spec(name)
+
+    monkeypatch.setattr(tool_profiles.importlib.util, "find_spec", fake_find_spec)
+
+    try:
+        validate_profile_dependencies((CORE_PROFILE, "control-plane"))
+    except ValueError as exc:
+        message = str(exc)
+        assert "control-plane" in message
+        assert "fastapi" in message
+        assert "httpx" in message
+    else:
+        raise AssertionError(
+            "Expected missing optional dependencies to raise ValueError"
+        )

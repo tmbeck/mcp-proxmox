@@ -548,6 +548,6 @@ The implementation is clean, well-documented, and ready for immediate deployment
 
 ---
 
-For implementation details, see `MULTI_CLUSTER_SPEC.md`  
-For setup and usage, see `MULTI_CLUSTER_QUICK_START.md`  
-For project overview, see `IMPLEMENTATION_SUMMARY.md`
+For implementation details, see `docs/MULTI_CLUSTER_SPEC.md`  
+For setup and usage, see `docs/MULTI_CLUSTER_QUICK_START.md`  
+For project overview, see `docs/IMPLEMENTATION_SUMMARY.md`

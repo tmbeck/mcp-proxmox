@@ -165,18 +165,18 @@ Node: pve
 
 ## 📚 Documentation Created
 
-1. **RESOURCES_SUMMARY.md**
+1. **docs/RESOURCES_SUMMARY.md**
    - Comprehensive resource overview
    - Cluster details and statistics
    - Memory distribution analysis
 
-2. **MCP_SERVER_START_GUIDE.md**
+2. **docs/MCP_SERVER_START_GUIDE.md**
    - Setup instructions
    - Integration with Cursor/Claude
    - Troubleshooting guide
    - Tool reference
 
-3. **EXECUTION_SUMMARY.txt**
+3. **docs/EXECUTION_SUMMARY.txt**
    - Task completion checklist
    - Timeline of actions
    - Configuration details
@@ -314,8 +314,8 @@ staging_client = registry.get_client("staging")
 
 **Documentation**
 - README.md - General documentation
-- MULTI_CLUSTER_SPEC.md - Multi-cluster details
-- MCP_SERVER_START_GUIDE.md - Setup guide
+- docs/MULTI_CLUSTER_SPEC.md - Multi-cluster details
+- docs/MCP_SERVER_START_GUIDE.md - Setup guide
 
 **Testing**
 - verify_mcp_tools.py - Tool verification
@@ -325,7 +325,7 @@ staging_client = registry.get_client("staging")
 **Configuration**
 - .env - Environment variables
 - pyproject.toml - Project metadata
-- requirements.txt - Python dependencies
+- uv.lock - Dependency lockfile (uv-managed)
 
 ---
 
@@ -353,4 +353,3 @@ The **Proxmox MCP Server** is fully operational and ready for deployment. All cl
 **Generated**: 2025-10-16 19:35 UTC  
 **Version**: 1.0.0  
 **Last Updated**: 2025-10-16
-

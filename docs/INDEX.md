@@ -8,19 +8,19 @@
 ## 📋 Quick Reference
 
 ### Start Reading With These Files
-1. **FINAL_REPORT.md** (8.3 KB)
+1. **docs/FINAL_REPORT.md** (8.3 KB)
    - Comprehensive executive summary
    - Complete deployment details
    - Resource inventory and metrics
    - Integration instructions
 
-2. **MCP_SERVER_START_GUIDE.md** (4.2 KB)
+2. **docs/MCP_SERVER_START_GUIDE.md** (4.2 KB)
    - How to run the server
    - Integration with Cursor and Claude
    - Available tools reference
    - Troubleshooting guide
 
-3. **RESOURCES_SUMMARY.md** (2.9 KB)
+3. **docs/RESOURCES_SUMMARY.md** (2.9 KB)
    - Quick resource overview
    - Cluster details
    - Running/stopped VMs list
@@ -379,4 +379,3 @@ python verify_mcp_tools.py
 **Generated**: October 16, 2025, 19:35 UTC  
 **Version**: 1.0.0  
 **Status**: ✅ Complete and Verified
-

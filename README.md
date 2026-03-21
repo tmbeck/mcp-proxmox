@@ -242,9 +242,11 @@ Format below per tool:
   - Example: `{ "name": "web01", "disk": "scsi0", "grow_gb": 10, "confirm": true, "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-vm-disk-list` / `proxmox-vm-disk-add` / `proxmox-vm-disk-remove`
-  - Inspect attached disks, add a new disk or volume, and detach a disk device explicitly
+  - Inspect attached and unused disks, add a new disk or volume, and remove a disk in explicit `detach` or `delete-volume` mode
   - Example: `{ "name": "web01", "size_gb": 100, "storage": "local-lvm", "confirm": true }`
   - Answer: `{ "upid": "UPID:...", "device": "scsi1", ... }`
+  - Removal example: `{ "name": "web01", "device": "scsi1", "mode": "detach", "wait": true, "confirm": true }`
+  - Destructive removal example: `{ "name": "web01", "device": "scsi1", "mode": "delete-volume", "wait": true, "confirm": true }`
 - `proxmox-configure-vm`
   - Set whitelisted params (cores, memory, balloon, netX, agent, etc.)
   - Example: `{ "name": "web01", "params": { "memory": 4096, "cores": 4 }, "confirm": true }`

@@ -10,6 +10,7 @@ from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 
 VM_DISK_PREFIXES = ("ide", "sata", "scsi", "virtio")
+VM_UNUSED_DISK_PREFIX = "unused"
 
 
 def get_default_lxc_password() -> str:
@@ -187,6 +188,31 @@ class ProxmoxClient:
             }
         return dict(sorted(disks.items(), key=lambda item: item[0]))
 
+    def list_vm_unused_disks(self, node: str, vmid: int) -> Dict[str, Dict[str, Any]]:
+        config = self.vm_config(node, vmid)
+        disks: Dict[str, Dict[str, Any]] = {}
+        for key, value in config.items():
+            if not key.startswith(VM_UNUSED_DISK_PREFIX):
+                continue
+            disks[key] = {
+                "device": key,
+                "config": value,
+                "slot": int("".join(ch for ch in key if ch.isdigit()) or "0"),
+            }
+        return dict(sorted(disks.items(), key=lambda item: item[0]))
+
+    def _next_unused_disk_key(self, config: Dict[str, Any]) -> str:
+        used_slots = {
+            int(key.removeprefix(VM_UNUSED_DISK_PREFIX))
+            for key in config
+            if key.startswith(VM_UNUSED_DISK_PREFIX)
+            and key.removeprefix(VM_UNUSED_DISK_PREFIX).isdigit()
+        }
+        slot = 0
+        while slot in used_slots:
+            slot += 1
+        return f"{VM_UNUSED_DISK_PREFIX}{slot}"
+
     def add_vm_disk(
         self,
         node: str,
@@ -238,7 +264,7 @@ class ProxmoxClient:
         upid = self._api.nodes(node).qemu(vmid).config.put(**{device: disk_value})
         return {"upid": upid, "device": device, "config": disk_value}
 
-    def remove_vm_disk(
+    def detach_vm_disk(
         self,
         node: str,
         vmid: int,
@@ -249,7 +275,78 @@ class ProxmoxClient:
         if device not in config:
             raise ValueError(f"Disk device not attached: {device}")
         upid = self._api.nodes(node).qemu(vmid).config.put(delete=device)
-        return {"upid": upid, "removed": device, "previous_config": config[device]}
+        predicted_unused_device = self._next_unused_disk_key(config)
+        return {
+            "upid": upid,
+            "removed": device,
+            "previous_config": config[device],
+            "retained_as": predicted_unused_device,
+            "mode": "detach",
+        }
+
+    def delete_vm_disk_volume(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        device: str,
+        timeout: int = 600,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        config = self.vm_config(node, vmid)
+        if device not in config:
+            raise ValueError(f"Disk device not attached: {device}")
+
+        previous_config = config[device]
+        if device.startswith(VM_UNUSED_DISK_PREFIX):
+            delete_upid = self._api.nodes(node).qemu(vmid).config.put(delete=device)
+            return {
+                "delete_upid": delete_upid,
+                "removed": device,
+                "previous_config": previous_config,
+                "mode": "delete-volume",
+            }
+
+        detach_result = self.detach_vm_disk(node, vmid, device=device)
+        self.wait_task(
+            detach_result["upid"],
+            node=node,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+
+        refreshed_config = self.vm_config(node, vmid)
+        unused_device = next(
+            (
+                key
+                for key, value in refreshed_config.items()
+                if key.startswith(VM_UNUSED_DISK_PREFIX) and value == previous_config
+            ),
+            None,
+        )
+        if unused_device is None:
+            raise RuntimeError(
+                f"Detached disk {device} did not appear as an unused disk; refusing destructive delete"
+            )
+
+        delete_upid = self._api.nodes(node).qemu(vmid).config.put(delete=unused_device)
+        return {
+            "detach_upid": detach_result["upid"],
+            "delete_upid": delete_upid,
+            "removed": device,
+            "deleted_unused_device": unused_device,
+            "previous_config": previous_config,
+            "mode": "delete-volume",
+        }
+
+    def remove_vm_disk(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        device: str,
+    ) -> Dict[str, Any]:
+        return self.detach_vm_disk(node, vmid, device=device)
 
     def lxc_config(self, node: str, vmid: int) -> Dict[str, Any]:
         return self._api.nodes(node).lxc(vmid).config.get()

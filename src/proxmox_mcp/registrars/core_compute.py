@@ -719,6 +719,7 @@ def register_core_compute_tools(
             "vmid": vm_vmid,
             "node": vm_node,
             "disks": client.list_vm_disks(vm_node, vm_vmid),
+            "unused_disks": client.list_vm_unused_disks(vm_node, vm_vmid),
         }
 
     @server.tool("proxmox-vm-disk-add")
@@ -776,19 +777,55 @@ def register_core_compute_tools(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
         node: Optional[str] = None,
+        mode: str = "detach",
         confirm: Optional[bool] = None,
         dry_run: bool = False,
+        wait: bool = False,
+        timeout: int = 600,
+        poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        if mode not in {"detach", "delete-volume"}:
+            raise ValueError("mode must be 'detach' or 'delete-volume'")
         require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
                 "action": "vm-disk-remove",
-                "params": {"node": vm_node, "vmid": vm_vmid, "device": device},
+                "params": {
+                    "node": vm_node,
+                    "vmid": vm_vmid,
+                    "device": device,
+                    "mode": mode,
+                },
             }
-        return client.remove_vm_disk(vm_node, vm_vmid, device=device)
+        if mode == "detach":
+            result = client.detach_vm_disk(vm_node, vm_vmid, device=device)
+            if wait:
+                result["status"] = client.wait_task(
+                    result["upid"],
+                    node=vm_node,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+            return result
+
+        result = client.delete_vm_disk_volume(
+            vm_node,
+            vm_vmid,
+            device=device,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        if wait and "delete_upid" in result:
+            result["status"] = client.wait_task(
+                result["delete_upid"],
+                node=vm_node,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        return result
 
     @server.tool("proxmox-upload-iso")
     async def proxmox_upload_iso(

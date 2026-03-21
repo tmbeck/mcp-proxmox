@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
 
 from .client import ProxmoxClient
-from .utils import read_env, require_confirm, format_size, is_multi_cluster_mode
+from .utils import read_env, require_confirm, is_multi_cluster_mode
 from .cluster_manager import get_cluster_registry
 from .registrars.ai import register_ai_tools
 from .registrars.automation import register_automation_tools
@@ -139,18 +138,6 @@ register_cluster_tools(server, get_client, is_multi_cluster_mode, get_cluster_re
 
 
 register_core_compute_tools(server, get_client, require_confirm)
-
-
-# ---------- VM lifecycle ----------
-
-
-# ---------- LXC lifecycle ----------
-
-
-# ---------- Cloud-init & networking ----------
-
-
-# ---------- Images, templates, snapshots, backups ----------
 
 
 # ---------- Metrics ----------

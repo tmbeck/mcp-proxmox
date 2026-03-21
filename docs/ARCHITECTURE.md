@@ -83,34 +83,31 @@ Recommended env defaults for shared deployments:
 
 ## What Still Needs To Happen
 
-The project is structurally better, but the control-plane side is still an entrypoint layered on top of the same package. To move this further into a dedicated control-plane service package, the next phase should be:
+The project is structurally better, but the control-plane side is still mostly an entrypoint layered on top of the same package. The next phase should keep the shared-core approach while making the control-plane runtime feel like a distinct service mode.
 
-1. Separate package-facing identities
-- keep `mcp-proxmox` as the lean MCP/core distribution
-- introduce a dedicated control-plane distribution or package target that depends on the shared core library
-
-2. Split transport from service logic
+1. Split transport from service logic
 - move remaining helper/factory logic out of `src/proxmox_mcp/server.py`
 - keep MCP registration as one adapter
 - create a dedicated control-plane service adapter for shared HTTP/background-service use
 
-3. Create a dedicated control-plane runtime module
+2. Expand the dedicated control-plane runtime module
 - own config loading for shared deployments
 - own gateway/auth/background workers
 - own persistent state/event/audit behavior
 - avoid inheriting local CLI assumptions by default
 
-4. Add deployment-specific packaging
-- dedicated extras or a separate install target for the control-plane package
+3. Add deployment-specific packaging and launch conventions
+- keep the same repository/package family, but document the control-plane install path as a layered runtime
+- use dedicated extras and the `proxmox-mcp-control-plane` entrypoint instead of forcing a totally separate product
 - Dockerfile and compose example specifically for the shared control-plane runtime
 - explicit healthcheck/startup docs
 
-5. Add persistence and operational boundaries
+4. Add persistence and operational boundaries
 - move beyond filesystem-only local state for shared/team mode
 - add explicit event/audit storage interfaces
 - define which secrets/config remain local files versus injected secrets
 
-6. Add service-level tests
+5. Add service-level tests
 - tests for control-plane default argv/profile behavior are now in place
 - next add HTTP/auth integration tests around the shared runtime itself
 
@@ -119,7 +116,4 @@ The project is structurally better, but the control-plane side is still an entry
 1. Extract the remaining helper factories/config wiring from `src/proxmox_mcp/server.py`
 2. Add a dedicated `control_plane_service.py` runtime module that is not just a thin argv wrapper
 3. Add Docker deployment docs and example manifests for that runtime
-4. Decide whether the control-plane becomes:
-   - a second package in the same repo, or
-   - a second distribution built from the same source tree
-5. Add service-level integration tests for the control-plane runtime
+4. Add service-level integration tests for the control-plane runtime

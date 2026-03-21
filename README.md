@@ -5,6 +5,7 @@ Advanced Proxmox Model Context Protocol (MCP) server in Python exposing rich Pro
 - Guide reference: [MCP Quickstart (Python)](https://modelcontextprotocol.io/quickstart/server#python)
 - Structure mirrors: [`bsahane/mcp-ansible`](https://github.com/bsahane/mcp-ansible/tree/main)
 - Architecture overview: `docs/ARCHITECTURE.md`
+- Shared deployment guide: `docs/CONTROL_PLANE_DEPLOYMENT.md`
 
 ## Quick start
 
@@ -109,6 +110,7 @@ uv run proxmox-mcp-control-plane
 ```
 
 For a deeper explanation of the core-vs-control-plane split and the next package/service boundary work, see `docs/ARCHITECTURE.md`.
+For layered shared deployment guidance, see `docs/CONTROL_PLANE_DEPLOYMENT.md`.
 
 Profile guide:
 

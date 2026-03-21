@@ -305,7 +305,7 @@ uv run mypy src
 Notes:
 - `uv run pytest` runs the stable automated suite.
 - Stable automated tests live under `tests/`.
-- Manual/integration-oriented scripts such as `test_resources.py` and `test_multi_cluster_server.py` stay at the repo root and are intentionally excluded from pytest collection; run them directly when you want live-environment checks.
+- Manual/integration-oriented scripts such as `scripts/test_resources.py` and `scripts/test_multi_cluster_server.py` are intentionally excluded from pytest collection; run them directly when you want live-environment checks.
 
 ## License
 

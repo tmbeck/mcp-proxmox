@@ -4,11 +4,14 @@
 
 Use `proxmox-mcp` for local, stdio-first agent workflows.
 
-Use `proxmox-mcp-control-plane` when you want a broader shared runtime for a team, typically inside Docker or another supervised service environment.
+If you later want a broader shared runtime for a team, you do not need a separate product. You can either:
 
-This is a layered runtime, not a completely separate product. It uses the same shared core and enables broader profiles by default.
+- run `proxmox-mcp --profile ...` directly in Docker, or
+- use `proxmox-mcp-control-plane` as a convenience wrapper around a broader profile set.
 
-## What The Control-Plane Entrypoint Enables
+This is a layered runtime, not a completely separate product.
+
+## What The Convenience Control-Plane Entrypoint Enables
 
 By default, `proxmox-mcp-control-plane` activates:
 
@@ -18,6 +21,8 @@ By default, `proxmox-mcp-control-plane` activates:
 - `security`
 
 It still uses the same core MCP/provisioning capabilities underneath.
+
+If you do not need those broader profiles, do not use this mode.
 
 ## Install
 
@@ -29,6 +34,12 @@ uv tool install '.[control-plane,observability,automation,security]'
 
 ```bash
 proxmox-mcp-control-plane
+```
+
+Equivalent explicit profile-driven launch:
+
+```bash
+proxmox-mcp --profile control-plane --profile observability --profile automation --profile security
 ```
 
 You can still override profiles explicitly if needed:
@@ -66,10 +77,10 @@ PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS="false"
 
 ## Docker Direction
 
-The current repo now has the runtime boundary needed for Docker deployment, but not yet a canonical Dockerfile/compose example.
+The current repo does not yet ship a canonical Dockerfile/compose example.
 
 The next implementation step should be:
 
-1. add a dedicated Dockerfile for `proxmox-mcp-control-plane`
+1. add a Dockerfile that can run `proxmox-mcp --profile ...`
 2. add a compose example with env file + persistent state volume
 3. add a healthcheck/startup section for gateway-enabled service mode

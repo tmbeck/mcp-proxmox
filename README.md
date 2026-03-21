@@ -21,7 +21,7 @@ Run commands in the project environment with `uv run ...` (no manual activation 
 Install modes:
 
 - `uv tool install .` installs the lean core MCP server surface.
-- `uv tool install '.[control-plane,observability,automation,security]'` plus `proxmox-mcp-control-plane` gives you the broader shared-control-plane entrypoint for Docker/team use.
+- `uv tool install '.[control-plane,observability,automation,security]'` lets you run broader shared/team modes when you actually need them.
 - `uv tool install '.[control-plane]'` adds the shared API/integration feature set.
 - `uv tool install '.[observability]'` adds monitoring/logging helpers.
 - `uv tool install '.[automation]'` adds IaC/orchestration helpers.
@@ -105,12 +105,14 @@ uv run proxmox-mcp --profile observability --profile automation
 # Enable every optional profile
 uv run proxmox-mcp --profile full
 
-# Shared control-plane entrypoint (defaults to control-plane + observability + automation + security)
+# Optional convenience wrapper for the broader shared profile set
 uv run proxmox-mcp-control-plane
 ```
 
 For a deeper explanation of the core-vs-control-plane split and the next package/service boundary work, see `docs/ARCHITECTURE.md`.
 For layered shared deployment guidance, see `docs/CONTROL_PLANE_DEPLOYMENT.md`.
+
+If your main goal is direct VM/LXC management, template cloning, provisioning, snapshots/backups, and related guest operations, stay on the default `core` profile.
 
 Profile guide:
 
@@ -239,6 +241,10 @@ Format below per tool:
   - Grow disk (GB) on target disk (e.g., scsi0)
   - Example: `{ "name": "web01", "disk": "scsi0", "grow_gb": 10, "confirm": true, "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
+- `proxmox-vm-disk-list` / `proxmox-vm-disk-add` / `proxmox-vm-disk-remove`
+  - Inspect attached disks, add a new disk or volume, and detach a disk device explicitly
+  - Example: `{ "name": "web01", "size_gb": 100, "storage": "local-lvm", "confirm": true }`
+  - Answer: `{ "upid": "UPID:...", "device": "scsi1", ... }`
 - `proxmox-configure-vm`
   - Set whitelisted params (cores, memory, balloon, netX, agent, etc.)
   - Example: `{ "name": "web01", "params": { "memory": 4096, "cores": 4 }, "confirm": true }`

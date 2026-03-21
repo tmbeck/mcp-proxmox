@@ -9,6 +9,9 @@ from proxmoxer import ProxmoxAPI
 from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 
+VM_DISK_PREFIXES = ("ide", "sata", "scsi", "virtio")
+
+
 def get_default_lxc_password() -> str:
     """Return the configured default LXC password or fail closed."""
     password = os.environ.get("PROXMOX_DEFAULT_LXC_PASSWORD", "").strip()
@@ -169,6 +172,84 @@ class ProxmoxClient:
 
     def vm_config(self, node: str, vmid: int) -> Dict[str, Any]:
         return self._api.nodes(node).qemu(vmid).config.get()
+
+    def list_vm_disks(self, node: str, vmid: int) -> Dict[str, Dict[str, Any]]:
+        config = self.vm_config(node, vmid)
+        disks: Dict[str, Dict[str, Any]] = {}
+        for key, value in config.items():
+            if not key.startswith(VM_DISK_PREFIXES):
+                continue
+            disks[key] = {
+                "device": key,
+                "config": value,
+                "interface": "".join(ch for ch in key if not ch.isdigit()),
+                "slot": int("".join(ch for ch in key if ch.isdigit()) or "0"),
+            }
+        return dict(sorted(disks.items(), key=lambda item: item[0]))
+
+    def add_vm_disk(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        interface: str = "scsi",
+        slot: Optional[int] = None,
+        storage: Optional[str] = None,
+        size_gb: Optional[int] = None,
+        volume: Optional[str] = None,
+        format: Optional[str] = None,
+        ssd: bool = False,
+        cache: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if interface not in VM_DISK_PREFIXES:
+            supported = ", ".join(VM_DISK_PREFIXES)
+            raise ValueError(
+                f"Unsupported disk interface '{interface}'. Supported: {supported}"
+            )
+        if not volume and (size_gb is None or size_gb <= 0):
+            raise ValueError("Provide either volume or size_gb > 0")
+
+        config = self.vm_config(node, vmid)
+        if slot is None:
+            used_slots = {
+                int(key.removeprefix(interface))
+                for key in config
+                if key.startswith(interface) and key.removeprefix(interface).isdigit()
+            }
+            slot = 0
+            while slot in used_slots:
+                slot += 1
+        elif f"{interface}{slot}" in config:
+            raise ValueError(f"Disk slot already in use: {interface}{slot}")
+
+        storage_id = storage or self.default_storage or "local-lvm"
+        disk_value = volume or f"{storage_id}:{size_gb}"
+        disk_options: List[str] = []
+        if format:
+            disk_options.append(f"format={format}")
+        if ssd:
+            disk_options.append("ssd=1")
+        if cache:
+            disk_options.append(f"cache={cache}")
+        if disk_options:
+            disk_value = f"{disk_value},{','.join(disk_options)}"
+
+        device = f"{interface}{slot}"
+        upid = self._api.nodes(node).qemu(vmid).config.put(**{device: disk_value})
+        return {"upid": upid, "device": device, "config": disk_value}
+
+    def remove_vm_disk(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        device: str,
+    ) -> Dict[str, Any]:
+        config = self.vm_config(node, vmid)
+        if device not in config:
+            raise ValueError(f"Disk device not attached: {device}")
+        upid = self._api.nodes(node).qemu(vmid).config.put(delete=device)
+        return {"upid": upid, "removed": device, "previous_config": config[device]}
 
     def lxc_config(self, node: str, vmid: int) -> Dict[str, Any]:
         return self._api.nodes(node).lxc(vmid).config.get()

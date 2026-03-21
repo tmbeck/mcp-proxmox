@@ -707,6 +707,89 @@ def register_core_compute_tools(
             }
         return client.vm_firewall_set(vm_node, vm_vmid, enable=enable, rules=rules)
 
+    @server.tool("proxmox-vm-disk-list")
+    async def proxmox_vm_disk_list(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        return {
+            "vmid": vm_vmid,
+            "node": vm_node,
+            "disks": client.list_vm_disks(vm_node, vm_vmid),
+        }
+
+    @server.tool("proxmox-vm-disk-add")
+    async def proxmox_vm_disk_add(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        interface: str = "scsi",
+        slot: Optional[int] = None,
+        storage: Optional[str] = None,
+        size_gb: Optional[int] = None,
+        volume: Optional[str] = None,
+        format: Optional[str] = None,
+        ssd: bool = False,
+        cache: Optional[str] = None,
+        confirm: Optional[bool] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        require_confirm(confirm)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-disk-add",
+                "params": {
+                    "node": vm_node,
+                    "vmid": vm_vmid,
+                    "interface": interface,
+                    "slot": slot,
+                    "storage": storage,
+                    "size_gb": size_gb,
+                    "volume": volume,
+                    "format": format,
+                    "ssd": ssd,
+                    "cache": cache,
+                },
+            }
+        return client.add_vm_disk(
+            vm_node,
+            vm_vmid,
+            interface=interface,
+            slot=slot,
+            storage=storage,
+            size_gb=size_gb,
+            volume=volume,
+            format=format,
+            ssd=ssd,
+            cache=cache,
+        )
+
+    @server.tool("proxmox-vm-disk-remove")
+    async def proxmox_vm_disk_remove(
+        device: str,
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        confirm: Optional[bool] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        require_confirm(confirm)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-disk-remove",
+                "params": {"node": vm_node, "vmid": vm_vmid, "device": device},
+            }
+        return client.remove_vm_disk(vm_node, vm_vmid, device=device)
+
     @server.tool("proxmox-upload-iso")
     async def proxmox_upload_iso(
         node: Optional[str] = None,

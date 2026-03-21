@@ -83,7 +83,15 @@ Recommended env defaults for shared deployments:
 
 ## What Still Needs To Happen
 
-The project is structurally better, but the control-plane side is still mostly an entrypoint layered on top of the same package. The next phase should keep the shared-core approach while making the control-plane runtime feel like a distinct service mode.
+The project is in a good place to stop and use the profile system as-is for now.
+
+For the current use case, the best architectural choice is:
+
+- keep `core` as the default local/stdIO runtime
+- treat broader behavior as opt-in profile selection
+- only deepen the control-plane runtime if real shared-deployment needs justify it later
+
+That means the next work should favor core ergonomics and deployment examples over more runtime abstraction.
 
 1. Split transport from service logic
 - move remaining helper/factory logic out of `src/proxmox_mcp/server.py`
@@ -110,6 +118,15 @@ The project is structurally better, but the control-plane side is still mostly a
 5. Add service-level tests
 - tests for control-plane default argv/profile behavior are now in place
 - next add HTTP/auth integration tests around the shared runtime itself
+
+## Recommended Near-Term Priority
+
+Before doing more control-plane work, focus on the direct operator use case:
+
+1. core VM/LXC ergonomics
+2. explicit disk attach/detach workflows
+3. Docker examples that simply invoke `proxmox-mcp --profile ...`
+4. only then revisit whether the convenience control-plane entrypoint needs to become more than a thin wrapper
 
 ## Recommended Next Implementation Order
 

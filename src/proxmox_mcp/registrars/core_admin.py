@@ -255,11 +255,52 @@ def register_core_admin_tools(
         command: str = "",
         args: Optional[List[str]] = None,
         input_data: Optional[str] = None,
+        wait: bool = False,
+        timeout: int = 300,
+        poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not command:
             raise ValueError("command is required")
-        return client.qga_exec(
+        result = client.qga_exec(
             vm_node, vm_vmid, command=command, args=args, input_data=input_data
         )
+        if wait and isinstance(result, dict) and "pid" in result:
+            result["status"] = client.qga_exec_wait(
+                vm_node,
+                vm_vmid,
+                pid=int(result["pid"]),
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        return result
+
+    @server.tool("proxmox-guest-shell")
+    async def proxmox_guest_shell(
+        script: str,
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        shell: str = "bash",
+        wait: bool = True,
+        timeout: int = 300,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        if not script:
+            raise ValueError("script is required")
+        if shell not in {"bash", "sh"}:
+            raise ValueError("shell must be 'bash' or 'sh'")
+
+        result = client.qga_exec(vm_node, vm_vmid, command=shell, args=["-lc", script])
+        if wait and isinstance(result, dict) and "pid" in result:
+            result["status"] = client.qga_exec_wait(
+                vm_node,
+                vm_vmid,
+                pid=int(result["pid"]),
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+        return result

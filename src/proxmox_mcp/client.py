@@ -676,6 +676,28 @@ class ProxmoxClient:
             payload["input-data"] = input_data
         return self._api.nodes(node).qemu(vmid).agent.exec.post(**payload)
 
+    def qga_exec_status(self, node: str, vmid: int, pid: int) -> Dict[str, Any]:
+        return self._api.nodes(node).qemu(vmid).agent("exec-status").get(pid=pid)
+
+    def qga_exec_wait(
+        self,
+        node: str,
+        vmid: int,
+        pid: int,
+        timeout: int = 300,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        start = time.time()
+        while True:
+            status = self.qga_exec_status(node, vmid, pid)
+            if status.get("exited"):
+                return status
+            if (time.time() - start) > timeout:
+                raise TimeoutError(
+                    f"Guest exec pid {pid} did not finish within {timeout}s"
+                )
+            time.sleep(poll_interval)
+
     def qga_network_get_interfaces(self, node: str, vmid: int) -> Dict[str, Any]:
         return self._api.nodes(node).qemu(vmid).agent["network-get-interfaces"].get()
 

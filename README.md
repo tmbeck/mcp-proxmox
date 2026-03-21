@@ -293,8 +293,10 @@ Format below per tool:
   - Poll a task until done/timeout
 - `proxmox-register-vm-as-host`
   - Emit JSON/INI snippet for Ansible inventory (hostname, IP, SSH user/key)
-- `proxmox-guest-exec` (optional)
-  - Run a command via QEMU Guest Agent (requires agent in guest)
+- `proxmox-guest-exec`
+  - Run a command via QEMU Guest Agent; can optionally wait for exit status/output
+- `proxmox-guest-shell`
+  - Run a Linux shell snippet via guest agent (`bash -lc` or `sh -lc`) for install/test workflows
 
 ## Examples
 
@@ -302,6 +304,7 @@ Format below per tool:
 - VMs on node `pve`: `{ "node": "pve" }` for `proxmox-list-vms`
 - Clone a template: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "confirm": true, "wait": true }`
 - Configure Cloud-init IP: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1", "confirm": true }`
+- Run an install/test command in a Linux guest: `{ "name": "web01", "script": "sudo ./install.sh && ./run-tests.sh", "wait": true }` for `proxmox-guest-shell`
 
 ## Notes
 

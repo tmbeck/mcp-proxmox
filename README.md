@@ -64,6 +64,7 @@ Notes:
 - `PROXMOX_DEFAULT_LXC_PASSWORD` must be set before using `proxmox-create-lxc`; the server no longer falls back to a predictable default password.
 - Generated monitoring/logging stacks are now local-first by default (`PROXMOX_MONITORING_BIND_HOST=127.0.0.1`) and expect operator-supplied secrets via `PROXMOX_GRAFANA_ADMIN_PASSWORD` and `PROXMOX_ELASTIC_PASSWORD`.
 - `PROXMOX_MCP_PROFILES` can preselect optional tool surfaces for a deployment; the CLI `--profile` flag overrides it.
+- `PROXMOX_MCP_STATE_DIR` can relocate local state/config artifacts if you do not want them under `~/.proxmox_mcp`.
 
 ## Run the MCP server (stdio)
 

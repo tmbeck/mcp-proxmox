@@ -21,6 +21,7 @@ import schedule
 from loguru import logger
 
 from .client import ProxmoxClient
+from .state import get_state_subdir
 from .utils import run_command, format_error
 
 
@@ -29,8 +30,7 @@ class AdvancedStorageManager:
 
     def __init__(self, proxmox_client: ProxmoxClient):
         self.client = proxmox_client
-        self.config_dir = Path.home() / ".proxmox_mcp" / "storage"
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_dir = get_state_subdir("storage")
         self.replication_jobs = {}
         self.snapshot_policies = {}
 

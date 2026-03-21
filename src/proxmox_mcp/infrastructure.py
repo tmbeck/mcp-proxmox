@@ -23,6 +23,7 @@ import ansible_runner
 from loguru import logger
 
 from .client import ProxmoxClient
+from .state import get_state_subdir
 from .utils import run_command, format_error, parse_api_url
 
 
@@ -32,8 +33,7 @@ class InfrastructureManager:
     def __init__(self, proxmox_client: ProxmoxClient):
         self.client = proxmox_client
         self.terraform = None
-        self.working_dir = Path.home() / ".proxmox_mcp" / "infrastructure"
-        self.working_dir.mkdir(parents=True, exist_ok=True)
+        self.working_dir = get_state_subdir("infrastructure")
 
     async def terraform_plan(
         self,

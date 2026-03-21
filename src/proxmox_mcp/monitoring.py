@@ -31,6 +31,7 @@ from elasticsearch import Elasticsearch
 from loguru import logger
 
 from .client import ProxmoxClient
+from .state import get_state_subdir
 from .utils import run_command, format_error
 
 
@@ -39,8 +40,7 @@ class MonitoringManager:
 
     def __init__(self, proxmox_client: ProxmoxClient):
         self.client = proxmox_client
-        self.config_dir = Path.home() / ".proxmox_mcp" / "monitoring"
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_dir = get_state_subdir("monitoring")
 
         # Prometheus metrics
         self.registry = CollectorRegistry()

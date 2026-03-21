@@ -16,6 +16,16 @@ uv sync --dev
 
 Run commands in the project environment with `uv run ...` (no manual activation required).
 
+Install modes:
+
+- `uv tool install .` installs the lean core MCP server surface.
+- `uv tool install '.[control-plane]'` adds the shared API/integration feature set.
+- `uv tool install '.[observability]'` adds monitoring/logging helpers.
+- `uv tool install '.[automation]'` adds IaC/orchestration helpers.
+- `uv tool install '.[security]'` adds MFA/certificate/secret-store helpers.
+- `uv tool install '.[ai]'` adds AI/optimization helpers.
+- `uv tool install '.[full]'` installs every optional feature group.
+
 For a local tool-style install, you can also use:
 
 ```bash

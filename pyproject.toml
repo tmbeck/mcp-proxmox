@@ -160,6 +160,7 @@ dev = [
 
 [project.scripts]
 proxmox-mcp = "proxmox_mcp.server:main"
+proxmox-mcp-control-plane = "proxmox_mcp.control_plane:main"
 
 [tool.setuptools.package-dir]
 "" = "src"

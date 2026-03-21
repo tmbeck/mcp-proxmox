@@ -19,6 +19,7 @@ Run commands in the project environment with `uv run ...` (no manual activation 
 Install modes:
 
 - `uv tool install .` installs the lean core MCP server surface.
+- `uv tool install '.[control-plane,observability,automation,security]'` plus `proxmox-mcp-control-plane` gives you the broader shared-control-plane entrypoint for Docker/team use.
 - `uv tool install '.[control-plane]'` adds the shared API/integration feature set.
 - `uv tool install '.[observability]'` adds monitoring/logging helpers.
 - `uv tool install '.[automation]'` adds IaC/orchestration helpers.
@@ -101,6 +102,9 @@ uv run proxmox-mcp --profile observability --profile automation
 
 # Enable every optional profile
 uv run proxmox-mcp --profile full
+
+# Shared control-plane entrypoint (defaults to control-plane + observability + automation + security)
+uv run proxmox-mcp-control-plane
 ```
 
 Profile guide:

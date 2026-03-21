@@ -37,6 +37,8 @@ def test_disabled_tools_for_core_excludes_optional_surfaces() -> None:
     assert "proxmox-ai-scaling" in disabled
     assert "proxmox-create-vm" not in disabled
     assert "proxmox-download-os-template" not in disabled
+    assert "proxmox-create-windows-vm" not in disabled
+    assert "proxmox-create-rhcos-vm" not in disabled
 
 
 def test_disabled_tools_for_composed_profiles_keeps_requested_extensions() -> None:

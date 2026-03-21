@@ -117,6 +117,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env_*.bkp
 .venv
 env/
 venv/
@@ -237,3 +238,4 @@ ansible.cfg
 venv/
 env/
 ENV/
+.agent-graph/

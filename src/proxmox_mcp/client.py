@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from proxmoxer import ProxmoxAPI
 
-from .utils import parse_api_url, read_env, split_token_id
+from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 
 class ProxmoxClient:
@@ -70,7 +70,12 @@ class ProxmoxClient:
     def get_node_status(self, node: str) -> Dict[str, Any]:
         return self._api.nodes(node).status.get()
 
-    def list_vms(self, node: Optional[str] = None, status: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_vms(
+        self,
+        node: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         vms = self._api.cluster.resources.get(type="vm")
         if node:
             vms = [v for v in vms if v.get("node") == node]
@@ -81,7 +86,12 @@ class ProxmoxClient:
             vms = [v for v in vms if s in str(v.get("name", "")).lower()]
         return vms
 
-    def list_lxc(self, node: Optional[str] = None, status: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_lxc(
+        self,
+        node: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         lxcs = self._api.cluster.resources.get(type="lxc")
         if node:
             lxcs = [c for c in lxcs if c.get("node") == node]
@@ -92,7 +102,12 @@ class ProxmoxClient:
             lxcs = [c for c in lxcs if s in str(c.get("name", "")).lower()]
         return lxcs
 
-    def resolve_vm(self, vmid: Optional[int] = None, name: Optional[str] = None, node: Optional[str] = None) -> Tuple[int, str, Dict[str, Any]]:
+    def resolve_vm(
+        self,
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> Tuple[int, str, Dict[str, Any]]:
         resources = self._api.cluster.resources.get(type="vm")
         candidates: List[Dict[str, Any]] = []
         if vmid is not None:
@@ -113,7 +128,12 @@ class ProxmoxClient:
         vm = candidates[0]
         return int(vm["vmid"]), str(vm["node"]), vm
 
-    def resolve_lxc(self, vmid: Optional[int] = None, name: Optional[str] = None, node: Optional[str] = None) -> Tuple[int, str, Dict[str, Any]]:
+    def resolve_lxc(
+        self,
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> Tuple[int, str, Dict[str, Any]]:
         resources = self._api.cluster.resources.get(type="lxc")
         candidates: List[Dict[str, Any]] = []
         if vmid is not None:
@@ -151,9 +171,15 @@ class ProxmoxClient:
 
     def list_bridges(self, node: str) -> List[Dict[str, Any]]:
         nets = self._api.nodes(node).network.get()
-        return [n for n in nets if n.get("type") == "bridge" or str(n.get("iface", "")).startswith("vmbr")]
+        return [
+            n
+            for n in nets
+            if n.get("type") == "bridge" or str(n.get("iface", "")).startswith("vmbr")
+        ]
 
-    def list_tasks(self, node: Optional[str] = None, user: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def list_tasks(
+        self, node: Optional[str] = None, user: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
         tasks = self._api.cluster.tasks.get()
         if node:
             tasks = [t for t in tasks if t.get("node") == node]
@@ -189,7 +215,9 @@ class ProxmoxClient:
             params["target"] = target_node
         if storage:
             params["storage"] = storage
-        return self._api.nodes(source_node).qemu(source_vmid).clone.post(**params)  # returns upid
+        return (
+            self._api.nodes(source_node).qemu(source_vmid).clone.post(**params)
+        )  # returns upid
 
     def create_vm(
         self,
@@ -233,7 +261,9 @@ class ProxmoxClient:
     def start_vm(self, node: str, vmid: int) -> str:
         return self._api.nodes(node).qemu(vmid).status.start.post()
 
-    def stop_vm(self, node: str, vmid: int, force: bool = False, timeout: Optional[int] = None) -> str:
+    def stop_vm(
+        self, node: str, vmid: int, force: bool = False, timeout: Optional[int] = None
+    ) -> str:
         params: Dict[str, Any] = {}
         if force:
             params["forceStop"] = 1
@@ -250,14 +280,24 @@ class ProxmoxClient:
             params["timeout"] = int(timeout)
         return self._api.nodes(node).qemu(vmid).status.shutdown.post(**params)
 
-    def migrate_vm(self, node: str, vmid: int, target_node: str, online: bool = True) -> str:
-        return self._api.nodes(node).qemu(vmid).migrate.post(target=target_node, online=int(online))
+    def migrate_vm(
+        self, node: str, vmid: int, target_node: str, online: bool = True
+    ) -> str:
+        return (
+            self._api.nodes(node)
+            .qemu(vmid)
+            .migrate.post(target=target_node, online=int(online))
+        )
 
     def resize_vm_disk(self, node: str, vmid: int, disk: str, size_gb: int) -> str:
         # size format like +10G to grow
-        return self._api.nodes(node).qemu(vmid).resize.put(disk=disk, size=f"+{size_gb}G")
+        return (
+            self._api.nodes(node).qemu(vmid).resize.put(disk=disk, size=f"+{size_gb}G")
+        )
 
-    def configure_vm(self, node: str, vmid: int, params: Dict[str, Any]) -> Dict[str, Any]:
+    def configure_vm(
+        self, node: str, vmid: int, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         # Returns a task upid for most changes; some return nothing. Normalize to dict
         upid = self._api.nodes(node).qemu(vmid).config.put(**params)
         return {"upid": upid} if isinstance(upid, str) else {"result": upid}
@@ -279,14 +319,16 @@ class ProxmoxClient:
     ) -> str:
         storage_id = storage or self.default_storage or "local-lvm"
         bridge_id = bridge or self.default_bridge or "vmbr0"
-        rootfs = f"{storage_id}:{max(rootfs_gb,1)}"
+        rootfs = f"{storage_id}:{max(rootfs_gb, 1)}"
         net0 = f"name=eth0,bridge={bridge_id},ip={net_ip or 'dhcp'}"
         params: Dict[str, Any] = {
             "vmid": vmid,
             "hostname": hostname,
             "cores": cores,
             "memory": memory_mb,
-            "ostemplate": ostemplate if ":" in ostemplate else f"{storage_id}:vztmpl/{ostemplate}",
+            "ostemplate": ostemplate
+            if ":" in ostemplate
+            else f"{storage_id}:vztmpl/{ostemplate}",
             "rootfs": rootfs,
             "net0": net0,
             "password": os.environ.get("PROXMOX_DEFAULT_LXC_PASSWORD", "changeMe123!"),
@@ -305,18 +347,31 @@ class ProxmoxClient:
             params["timeout"] = int(timeout)
         return self._api.nodes(node).lxc(vmid).status.stop.post(**params)
 
-    def configure_lxc(self, node: str, vmid: int, params: Dict[str, Any]) -> Dict[str, Any]:
+    def configure_lxc(
+        self, node: str, vmid: int, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         upid = self._api.nodes(node).lxc(vmid).config.put(**params)
         return {"upid": upid} if isinstance(upid, str) else {"result": upid}
 
     # -------- Cloud-init & networking --------
-    def cloudinit_set(self, node: str, vmid: int, params: Dict[str, Any]) -> Dict[str, Any]:
+    def cloudinit_set(
+        self, node: str, vmid: int, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         upid = self._api.nodes(node).qemu(vmid).config.put(**params)
         return {"upid": upid} if isinstance(upid, str) else {"result": upid}
 
-    def vm_nic_add(self, node: str, vmid: int, bridge: str, model: str = "virtio", vlan: Optional[int] = None) -> Dict[str, Any]:
+    def vm_nic_add(
+        self,
+        node: str,
+        vmid: int,
+        bridge: str,
+        model: str = "virtio",
+        vlan: Optional[int] = None,
+    ) -> Dict[str, Any]:
         cfg = self.vm_config(node, vmid)
-        used = sorted(int(k.replace("net", "")) for k in cfg.keys() if k.startswith("net"))
+        used = sorted(
+            int(k.replace("net", "")) for k in cfg.keys() if k.startswith("net")
+        )
         idx = 0
         while idx in used:
             idx += 1
@@ -337,10 +392,20 @@ class ProxmoxClient:
         rules = self._api.nodes(node).qemu(vmid).firewall.rules.get()
         return {"options": opts, "rules": rules}
 
-    def vm_firewall_set(self, node: str, vmid: int, enable: Optional[bool] = None, rules: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def vm_firewall_set(
+        self,
+        node: str,
+        vmid: int,
+        enable: Optional[bool] = None,
+        rules: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         result: Dict[str, Any] = {}
         if enable is not None:
-            upid = self._api.nodes(node).qemu(vmid).firewall.options.put(enable=int(enable))
+            upid = (
+                self._api.nodes(node)
+                .qemu(vmid)
+                .firewall.options.put(enable=int(enable))
+            )
             result["options_upid"] = upid
         if rules:
             # Very simple approach: append new rules at the end
@@ -352,11 +417,23 @@ class ProxmoxClient:
     # -------- Images, templates, snapshots, backups --------
     def upload_iso(self, node: str, storage: str, file_path: str) -> str:
         with open(file_path, "rb") as f:
-            return self._api.nodes(node).storage(storage).upload.post(content="iso", filename=os.path.basename(file_path), file=f)
+            return (
+                self._api.nodes(node)
+                .storage(storage)
+                .upload.post(
+                    content="iso", filename=os.path.basename(file_path), file=f
+                )
+            )
 
     def upload_template(self, node: str, storage: str, file_path: str) -> str:
         with open(file_path, "rb") as f:
-            return self._api.nodes(node).storage(storage).upload.post(content="vztmpl", filename=os.path.basename(file_path), file=f)
+            return (
+                self._api.nodes(node)
+                .storage(storage)
+                .upload.post(
+                    content="vztmpl", filename=os.path.basename(file_path), file=f
+                )
+            )
 
     def template_vm(self, node: str, vmid: int) -> str:
         return self._api.nodes(node).qemu(vmid).template.post()
@@ -364,7 +441,14 @@ class ProxmoxClient:
     def list_snapshots(self, node: str, vmid: int) -> List[Dict[str, Any]]:
         return self._api.nodes(node).qemu(vmid).snapshot.get()
 
-    def create_snapshot(self, node: str, vmid: int, name: str, description: Optional[str] = None, vmstate: bool = False) -> str:
+    def create_snapshot(
+        self,
+        node: str,
+        vmid: int,
+        name: str,
+        description: Optional[str] = None,
+        vmstate: bool = False,
+    ) -> str:
         params: Dict[str, Any] = {"snapname": name, "vmstate": int(vmstate)}
         if description:
             params["description"] = description
@@ -376,23 +460,41 @@ class ProxmoxClient:
     def rollback_snapshot(self, node: str, vmid: int, name: str) -> str:
         return self._api.nodes(node).qemu(vmid).snapshot(name).rollback.post()
 
-    def backup_vm(self, node: str, vmid: int, mode: str = "snapshot", compress: str = "zstd", storage: Optional[str] = None) -> str:
+    def backup_vm(
+        self,
+        node: str,
+        vmid: int,
+        mode: str = "snapshot",
+        compress: str = "zstd",
+        storage: Optional[str] = None,
+    ) -> str:
         params: Dict[str, Any] = {"vmid": vmid, "mode": mode, "compress": compress}
         if storage:
             params["storage"] = storage
         return self._api.nodes(node).vzdump.post(**params)
 
-    def restore_vm(self, node: str, vmid: int, archive: str, storage: Optional[str] = None, force: bool = False) -> str:
+    def restore_vm(
+        self,
+        node: str,
+        vmid: int,
+        archive: str,
+        storage: Optional[str] = None,
+        force: bool = False,
+    ) -> str:
         params: Dict[str, Any] = {"vmid": vmid, "archive": archive, "force": int(force)}
         if storage:
             params["storage"] = storage
         return self._api.nodes(node).qemu.restore.post(**params)
 
     # -------- Metrics --------
-    def vm_metrics(self, node: str, vmid: int, timeframe: str = "hour", cf: str = "AVERAGE") -> List[Dict[str, Any]]:
+    def vm_metrics(
+        self, node: str, vmid: int, timeframe: str = "hour", cf: str = "AVERAGE"
+    ) -> List[Dict[str, Any]]:
         return self._api.nodes(node).qemu(vmid).rrddata.get(timeframe=timeframe, cf=cf)
 
-    def node_metrics(self, node: str, timeframe: str = "hour", cf: str = "AVERAGE") -> List[Dict[str, Any]]:
+    def node_metrics(
+        self, node: str, timeframe: str = "hour", cf: str = "AVERAGE"
+    ) -> List[Dict[str, Any]]:
         return self._api.nodes(node).rrddata.get(timeframe=timeframe, cf=cf)
 
     # -------- Pools / permissions --------
@@ -415,7 +517,9 @@ class ProxmoxClient:
         else:
             return self._api.nodes(node).lxc(vmid).config.put(pool=poolid)
 
-    def pool_remove(self, poolid: str, vmid: int, node: str, type_: str = "qemu") -> Any:
+    def pool_remove(
+        self, poolid: str, vmid: int, node: str, type_: str = "qemu"
+    ) -> Any:
         if type_ == "qemu":
             return self._api.nodes(node).qemu(vmid).config.put(pool="")
         else:
@@ -427,8 +531,19 @@ class ProxmoxClient:
     def list_roles(self) -> List[Dict[str, Any]]:
         return self._api.access.roles.get()
 
-    def assign_permission(self, path: str, roles: str, users: Optional[str] = None, groups: Optional[str] = None, propagate: bool = True) -> Any:
-        params: Dict[str, Any] = {"path": path, "roles": roles, "propagate": int(propagate)}
+    def assign_permission(
+        self,
+        path: str,
+        roles: str,
+        users: Optional[str] = None,
+        groups: Optional[str] = None,
+        propagate: bool = True,
+    ) -> Any:
+        params: Dict[str, Any] = {
+            "path": path,
+            "roles": roles,
+            "propagate": int(propagate),
+        }
         if users:
             params["users"] = users
         if groups:
@@ -436,7 +551,13 @@ class ProxmoxClient:
         return self._api.access.acl.put(**params)
 
     # -------- Tasks/wait helpers --------
-    def wait_task(self, upid: str, node: Optional[str] = None, timeout: int = 600, poll_interval: float = 2.0) -> Dict[str, Any]:
+    def wait_task(
+        self,
+        upid: str,
+        node: Optional[str] = None,
+        timeout: int = 600,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
         start = time.time()
         while True:
             status = self.task_status(upid, node=node)
@@ -446,7 +567,14 @@ class ProxmoxClient:
                 raise TimeoutError(f"Task {upid} did not complete within {timeout}s")
             time.sleep(poll_interval)
 
-    def qga_exec(self, node: str, vmid: int, command: str, args: Optional[List[str]] = None, input_data: Optional[str] = None) -> Dict[str, Any]:
+    def qga_exec(
+        self,
+        node: str,
+        vmid: int,
+        command: str,
+        args: Optional[List[str]] = None,
+        input_data: Optional[str] = None,
+    ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {"command": command}
         if args:
             payload["args"] = args
@@ -475,7 +603,7 @@ class ProxmoxClient:
         """Create VM with CloudInit support."""
         storage_id = storage or self.default_storage or "local-lvm"
         bridge_id = bridge or self.default_bridge or "vmbr0"
-        
+
         params: Dict[str, Any] = {
             "vmid": vmid,
             "name": name,
@@ -491,23 +619,31 @@ class ProxmoxClient:
             "net0": f"virtio,bridge={bridge_id}",
             "ide2": f"{storage_id}:cloudinit",  # CloudInit drive
         }
-        
+
         return self._api.nodes(node).qemu.post(**params)
 
-    def download_os_template(self, node: str, storage: str, template_name: str, template_url: str) -> str:
+    def download_os_template(
+        self, node: str, storage: str, template_name: str, template_url: str
+    ) -> str:
         """Download OS template from URL."""
         import requests
         import tempfile
-        
+
+        require_allowed_url(
+            template_url,
+            purpose=f"os template download ({template_name})",
+            user_provided=False,
+        )
+
         # Download template to temporary file
-        response = requests.get(template_url, stream=True)
+        response = requests.get(template_url, stream=True, timeout=60)
         response.raise_for_status()
-        
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".img") as temp_file:
             for chunk in response.iter_content(chunk_size=8192):
                 temp_file.write(chunk)
             temp_path = temp_file.name
-        
+
         try:
             # Upload to Proxmox storage
             upid = self.upload_template(node, storage, temp_path)
@@ -520,14 +656,19 @@ class ProxmoxClient:
         """List available OS templates in storage."""
         content = self.storage_content(node, storage)
         templates = [
-            item for item in content 
-            if item.get("content") in ("iso", "vztmpl") and 
-            any(keyword in item.get("volid", "").lower() 
-                for keyword in ["ubuntu", "fedora", "rocky", "alma", "centos", "debian"])
+            item
+            for item in content
+            if item.get("content") in ("iso", "vztmpl")
+            and any(
+                keyword in item.get("volid", "").lower()
+                for keyword in ["ubuntu", "fedora", "rocky", "alma", "centos", "debian"]
+            )
         ]
         return templates
 
-    def attach_cloudinit_iso(self, node: str, vmid: int, iso_path: str) -> Dict[str, Any]:
+    def attach_cloudinit_iso(
+        self, node: str, vmid: int, iso_path: str
+    ) -> Dict[str, Any]:
         """Attach CloudInit ISO to VM."""
         # First upload the ISO if it's a local path
         if os.path.isfile(iso_path):
@@ -536,22 +677,29 @@ class ProxmoxClient:
             iso_volid = f"{storage_id}:iso/{os.path.basename(iso_path)}"
         else:
             iso_volid = iso_path
-        
+
         # Attach to IDE2 as CloudInit drive
-        upid = self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        upid = (
+            self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        )
         return {"upid": upid, "iso_attached": iso_volid}
 
-    def create_cloudinit_iso(self, user_data: str, meta_data: Optional[str] = None, 
-                            network_config: Optional[str] = None, output_path: str = "/tmp/cloudinit.iso") -> str:
+    def create_cloudinit_iso(
+        self,
+        user_data: str,
+        meta_data: Optional[str] = None,
+        network_config: Optional[str] = None,
+        output_path: str = "/tmp/cloudinit.iso",
+    ) -> str:
         """Create CloudInit NoCloud ISO."""
         import subprocess
         import tempfile
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
             # Write user-data
             with open(os.path.join(temp_dir, "user-data"), "w") as f:
                 f.write(user_data)
-            
+
             # Write meta-data
             if meta_data:
                 with open(os.path.join(temp_dir, "meta-data"), "w") as f:
@@ -560,18 +708,24 @@ class ProxmoxClient:
                 # Create minimal meta-data
                 with open(os.path.join(temp_dir, "meta-data"), "w") as f:
                     f.write("instance-id: cloud-vm\nlocal-hostname: cloud-vm\n")
-            
+
             # Write network-config if provided
             if network_config:
                 with open(os.path.join(temp_dir, "network-config"), "w") as f:
                     f.write(network_config)
-            
+
             # Create ISO
             cmd = [
-                "genisoimage", "-output", output_path, "-volid", "cidata",
-                "-joliet", "-rock", temp_dir
+                "genisoimage",
+                "-output",
+                output_path,
+                "-volid",
+                "cidata",
+                "-joliet",
+                "-rock",
+                temp_dir,
             ]
-            
+
             try:
                 subprocess.run(cmd, check=True, capture_output=True)
             except (subprocess.CalledProcessError, FileNotFoundError):
@@ -580,20 +734,31 @@ class ProxmoxClient:
                 try:
                     subprocess.run(cmd, check=True, capture_output=True)
                 except (subprocess.CalledProcessError, FileNotFoundError):
-                    raise RuntimeError("Neither genisoimage nor mkisofs available for ISO creation")
-        
+                    raise RuntimeError(
+                        "Neither genisoimage nor mkisofs available for ISO creation"
+                    )
+
         return output_path
 
     def get_vm_cloudinit_config(self, node: str, vmid: int) -> Dict[str, Any]:
         """Get current CloudInit configuration of VM."""
         config = self.vm_config(node, vmid)
         cloudinit_config = {}
-        
+
         # Extract CloudInit related configurations
         for key, value in config.items():
-            if key.startswith(("ciuser", "cipassword", "searchdomain", "nameserver", "sshkeys", "ipconfig")):
+            if key.startswith(
+                (
+                    "ciuser",
+                    "cipassword",
+                    "searchdomain",
+                    "nameserver",
+                    "sshkeys",
+                    "ipconfig",
+                )
+            ):
                 cloudinit_config[key] = value
-        
+
         return cloudinit_config
 
     def set_cloudinit_config(self, node: str, vmid: int, config: Dict[str, Any]) -> str:
@@ -618,7 +783,7 @@ class ProxmoxClient:
         """Create RHCOS VM with enterprise-grade configuration."""
         storage_id = storage or self.default_storage or "local-lvm"
         bridge_id = bridge or self.default_bridge or "vmbr0"
-        
+
         params: Dict[str, Any] = {
             "vmid": vmid,
             "name": name,
@@ -637,10 +802,12 @@ class ProxmoxClient:
             # Enable nested virtualization for OpenShift
             "args": "-cpu host,+vmx",
         }
-        
+
         return self._api.nodes(node).qemu.post(**params)
 
-    def attach_ignition_iso(self, node: str, vmid: int, iso_path: str) -> Dict[str, Any]:
+    def attach_ignition_iso(
+        self, node: str, vmid: int, iso_path: str
+    ) -> Dict[str, Any]:
         """Attach Ignition ISO to RHCOS VM."""
         # Upload ISO if it's a local path
         if os.path.isfile(iso_path):
@@ -649,27 +816,37 @@ class ProxmoxClient:
             iso_volid = f"{storage_id}:iso/{os.path.basename(iso_path)}"
         else:
             iso_volid = iso_path
-        
+
         # Attach to IDE2 as Ignition drive
-        upid = self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        upid = (
+            self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        )
         return {"upid": upid, "ignition_iso": iso_volid}
 
-    def create_ignition_iso(self, ignition_json: str, output_path: str = "/tmp/ignition.iso") -> str:
+    def create_ignition_iso(
+        self, ignition_json: str, output_path: str = "/tmp/ignition.iso"
+    ) -> str:
         """Create Ignition ISO for RHCOS boot."""
         import subprocess
         import tempfile
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
             # Write ignition.json
             with open(os.path.join(temp_dir, "ignition.json"), "w") as f:
                 f.write(ignition_json)
-            
+
             # Create ISO
             cmd = [
-                "genisoimage", "-output", output_path, "-volid", "ignition",
-                "-joliet", "-rock", temp_dir
+                "genisoimage",
+                "-output",
+                output_path,
+                "-volid",
+                "ignition",
+                "-joliet",
+                "-rock",
+                temp_dir,
             ]
-            
+
             try:
                 subprocess.run(cmd, check=True, capture_output=True)
             except (subprocess.CalledProcessError, FileNotFoundError):
@@ -678,15 +855,17 @@ class ProxmoxClient:
                 try:
                     subprocess.run(cmd, check=True, capture_output=True)
                 except (subprocess.CalledProcessError, FileNotFoundError):
-                    raise RuntimeError("Neither genisoimage nor mkisofs available for ISO creation")
-        
+                    raise RuntimeError(
+                        "Neither genisoimage nor mkisofs available for ISO creation"
+                    )
+
         return output_path
 
     def get_vm_console_url(self, node: str, vmid: int) -> str:
         """Get VNC console URL for VM."""
         # Get VM configuration to determine console type
         config = self.vm_config(node, vmid)
-        
+
         # For RHCOS VMs, we typically use serial console
         if "serial0" in config:
             return f"https://{self.base_url}:8006/#v1:0:18:{node}:4:{vmid}::"
@@ -697,24 +876,27 @@ class ProxmoxClient:
         """Wait for VM to be accessible via SSH."""
         import socket
         import time
-        
+
         # Get VM IP from QEMU guest agent if available
         try:
             interfaces = self.qga_network_get_interfaces(node, vmid)
             vm_ip = None
-            
+
             if isinstance(interfaces.get("result"), list):
                 for interface in interfaces["result"]:
                     for addr in interface.get("ip-addresses", []):
-                        if addr.get("ip-address-type") == "ipv4" and not addr.get("prefix") == 32:
+                        if (
+                            addr.get("ip-address-type") == "ipv4"
+                            and not addr.get("prefix") == 32
+                        ):
                             vm_ip = addr.get("ip-address")
                             break
                     if vm_ip:
                         break
-            
+
             if not vm_ip:
                 return False
-            
+
             # Try to connect to SSH port
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -723,16 +905,16 @@ class ProxmoxClient:
                     sock.settimeout(5)
                     result = sock.connect_ex((vm_ip, 22))
                     sock.close()
-                    
+
                     if result == 0:
                         return True
                 except Exception:
                     pass
-                
+
                 time.sleep(10)
-            
+
             return False
-            
+
         except Exception:
             # If we can't get the IP or check SSH, assume it's not ready
             return False
@@ -740,21 +922,21 @@ class ProxmoxClient:
     def set_vm_description(self, node: str, vmid: int, description: str) -> str:
         """Set VM description/notes."""
         return self._api.nodes(node).qemu(vmid).config.put(description=description)
-    
+
     def get_vm_notes(self, node: str, vmid: int) -> str:
         """Get VM description/notes."""
         config = self._api.nodes(node).qemu(vmid).config.get()
         return config.get("description", "")
-    
+
     def set_vm_notes(self, node: str, vmid: int, notes: str) -> str:
         """Set VM description/notes."""
         return self.set_vm_description(node, vmid, notes)
-    
+
     def get_lxc_notes(self, node: str, ctid: int) -> str:
         """Get LXC description/notes."""
         config = self._api.nodes(node).lxc(ctid).config.get()
         return config.get("description", "")
-    
+
     def set_lxc_notes(self, node: str, ctid: int, notes: str) -> str:
         """Set LXC description/notes."""
         return self._api.nodes(node).lxc(ctid).config.put(description=notes)
@@ -763,8 +945,7 @@ class ProxmoxClient:
         """Get all VMs belonging to a cluster."""
         all_vms = self.list_vms()
         cluster_vms = [
-            vm for vm in all_vms 
-            if vm.get("name", "").startswith(f"{cluster_name}-")
+            vm for vm in all_vms if vm.get("name", "").startswith(f"{cluster_name}-")
         ]
         return cluster_vms
 
@@ -786,7 +967,7 @@ class ProxmoxClient:
         """Create Windows VM with optimized configuration."""
         storage_id = storage or self.default_storage or "local-lvm"
         bridge_id = bridge or self.default_bridge or "vmbr0"
-        
+
         params: Dict[str, Any] = {
             "vmid": vmid,
             "name": name,
@@ -809,15 +990,15 @@ class ProxmoxClient:
             # Add TPM for Windows 11 compatibility
             "tpmstate0": f"{storage_id}:1,version=v2.0",
         }
-        
+
         # Attach Windows ISO if provided
         if windows_iso:
             params["ide2"] = f"{windows_iso},media=cdrom"
-        
+
         # Attach VirtIO drivers ISO if provided
         if virtio_iso:
             params["ide3"] = f"{virtio_iso},media=cdrom"
-        
+
         return self._api.nodes(node).qemu.post(**params)
 
     def attach_windows_iso(self, node: str, vmid: int, iso_path: str) -> Dict[str, Any]:
@@ -829,12 +1010,16 @@ class ProxmoxClient:
             iso_volid = f"{storage_id}:iso/{os.path.basename(iso_path)}"
         else:
             iso_volid = iso_path
-        
+
         # Attach to IDE2 as bootable drive
-        upid = self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        upid = (
+            self._api.nodes(node).qemu(vmid).config.put(ide2=f"{iso_volid},media=cdrom")
+        )
         return {"upid": upid, "windows_iso": iso_volid}
 
-    def configure_windows_rdp(self, node: str, vmid: int, enable: bool = True) -> Dict[str, Any]:
+    def configure_windows_rdp(
+        self, node: str, vmid: int, enable: bool = True
+    ) -> Dict[str, Any]:
         """Configure Windows Remote Desktop Protocol."""
         if enable:
             script = """
@@ -850,12 +1035,13 @@ Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Serv
 Disable-NetFirewallRule -DisplayGroup "Remote Desktop"
 Write-Host "RDP disabled successfully"
 """
-        
+
         try:
             result = self.qga_exec(
-                node, vmid,
+                node,
+                vmid,
                 command="powershell.exe",
-                args=["-ExecutionPolicy", "Bypass", "-Command", script]
+                args=["-ExecutionPolicy", "Bypass", "-Command", script],
             )
             return {"rdp_configured": True, "enabled": enable, "result": result}
         except Exception as e:
@@ -866,24 +1052,24 @@ Write-Host "RDP disabled successfully"
         try:
             # Get VM configuration
             config = self.vm_config(node, vmid)
-            
+
             # Get guest info if QEMU agent is available
             guest_info = {}
             try:
                 guest_info = self.qga_exec(node, vmid, command="guest-info")
             except Exception:
                 pass  # QEMU agent not available or VM not running
-            
+
             # Check if it's a Windows VM
             is_windows = config.get("ostype", "").startswith("win")
-            
+
             # Get network interfaces
             interfaces = {}
             try:
                 interfaces = self.qga_network_get_interfaces(node, vmid)
             except Exception:
                 pass
-            
+
             return {
                 "vmid": vmid,
                 "name": config.get("name", ""),
@@ -897,13 +1083,14 @@ Write-Host "RDP disabled successfully"
                 "guest_info": guest_info,
                 "interfaces": interfaces,
                 "rdp_port": 3389,  # Default RDP port
-                "console_url": self.get_vm_console_url(node, vmid)
+                "console_url": self.get_vm_console_url(node, vmid),
             }
         except Exception as e:
             return {"error": str(e)}
 
-    def execute_windows_command(self, node: str, vmid: int, command: str, 
-                              shell: str = "powershell") -> Dict[str, Any]:
+    def execute_windows_command(
+        self, node: str, vmid: int, command: str, shell: str = "powershell"
+    ) -> Dict[str, Any]:
         """Execute command on Windows VM via QEMU guest agent."""
         if shell.lower() == "powershell":
             cmd = "powershell.exe"
@@ -913,7 +1100,7 @@ Write-Host "RDP disabled successfully"
             args = ["/c", command]
         else:
             raise ValueError("Supported shells: powershell, cmd")
-        
+
         try:
             result = self.qga_exec(node, vmid, command=cmd, args=args)
             return {"success": True, "result": result}
@@ -923,17 +1110,19 @@ Write-Host "RDP disabled successfully"
     def get_windows_services(self, node: str, vmid: int) -> Dict[str, Any]:
         """Get Windows services status."""
         script = "Get-Service | Select-Object Name, Status, StartType | ConvertTo-Json"
-        
+
         try:
             result = self.execute_windows_command(node, vmid, script, "powershell")
             return {"success": True, "services": result.get("result", {})}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def restart_windows_service(self, node: str, vmid: int, service_name: str) -> Dict[str, Any]:
+    def restart_windows_service(
+        self, node: str, vmid: int, service_name: str
+    ) -> Dict[str, Any]:
         """Restart Windows service."""
         script = f"Restart-Service -Name '{service_name}' -Force"
-        
+
         try:
             result = self.execute_windows_command(node, vmid, script, "powershell")
             return {"success": True, "service": service_name, "result": result}
@@ -953,7 +1142,7 @@ if (!(Get-Module -ListAvailable -Name PSWindowsUpdate)) {
 Import-Module PSWindowsUpdate
 Get-WindowsUpdate -Install -AcceptAll -AutoReboot
 """
-        
+
         try:
             result = self.execute_windows_command(node, vmid, script, "powershell")
             return {"success": True, "updates_installed": True, "result": result}
@@ -961,7 +1150,9 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
             return {"success": False, "error": str(e)}
 
     # -------- Docker Swarm support --------
-    def execute_docker_command(self, node: str, vmid: int, command: str) -> Dict[str, Any]:
+    def execute_docker_command(
+        self, node: str, vmid: int, command: str
+    ) -> Dict[str, Any]:
         """Execute Docker command on VM."""
         try:
             result = self.qga_exec(node, vmid, command="bash", args=["-c", command])
@@ -975,14 +1166,20 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
 
     def get_docker_swarm_status(self, node: str, vmid: int) -> Dict[str, Any]:
         """Get Docker Swarm status."""
-        return self.execute_docker_command(node, vmid, "docker info --format '{{.Swarm.LocalNodeState}}'")
+        return self.execute_docker_command(
+            node, vmid, "docker info --format '{{.Swarm.LocalNodeState}}'"
+        )
 
-    def initialize_docker_swarm(self, node: str, vmid: int, advertise_addr: str) -> Dict[str, Any]:
+    def initialize_docker_swarm(
+        self, node: str, vmid: int, advertise_addr: str
+    ) -> Dict[str, Any]:
         """Initialize Docker Swarm on node."""
         command = f"docker swarm init --advertise-addr {advertise_addr}"
         return self.execute_docker_command(node, vmid, command)
 
-    def join_docker_swarm(self, node: str, vmid: int, manager_ip: str, token: str) -> Dict[str, Any]:
+    def join_docker_swarm(
+        self, node: str, vmid: int, manager_ip: str, token: str
+    ) -> Dict[str, Any]:
         """Join node to Docker Swarm."""
         command = f"docker swarm join --token {token} {manager_ip}:2377"
         return self.execute_docker_command(node, vmid, command)
@@ -996,12 +1193,12 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
             worker_token_result = self.execute_docker_command(
                 node, vmid, "docker swarm join-token worker -q"
             )
-            
+
             if manager_token_result["success"] and worker_token_result["success"]:
                 return {
                     "success": True,
                     "manager_token": manager_token_result["result"],
-                    "worker_token": worker_token_result["result"]
+                    "worker_token": worker_token_result["result"],
                 }
             else:
                 return {"success": False, "error": "Failed to retrieve tokens"}
@@ -1018,67 +1215,86 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
         command = "docker service ls --format 'table {{.Name}}\\t{{.Mode}}\\t{{.Replicas}}\\t{{.Image}}'"
         return self.execute_docker_command(node, vmid, command)
 
-    def create_docker_service(self, node: str, vmid: int, service_name: str, 
-                             image: str, replicas: int = 1, ports: Optional[List[str]] = None,
-                             environment: Optional[Dict[str, str]] = None,
-                             networks: Optional[List[str]] = None,
-                             constraints: Optional[List[str]] = None) -> Dict[str, Any]:
+    def create_docker_service(
+        self,
+        node: str,
+        vmid: int,
+        service_name: str,
+        image: str,
+        replicas: int = 1,
+        ports: Optional[List[str]] = None,
+        environment: Optional[Dict[str, str]] = None,
+        networks: Optional[List[str]] = None,
+        constraints: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """Create Docker Swarm service."""
         command = f"docker service create --name {service_name} --replicas {replicas}"
-        
+
         # Add port mappings
         if ports:
             for port in ports:
                 command += f" --publish {port}"
-        
+
         # Add environment variables
         if environment:
             for key, value in environment.items():
                 command += f" --env {key}='{value}'"
-        
+
         # Add network attachments
         if networks:
             for network in networks:
                 command += f" --network {network}"
-        
+
         # Add constraints
         if constraints:
             for constraint in constraints:
                 command += f" --constraint '{constraint}'"
-        
+
         command += f" {image}"
-        
+
         return self.execute_docker_command(node, vmid, command)
 
-    def scale_docker_service(self, node: str, vmid: int, service_name: str, replicas: int) -> Dict[str, Any]:
+    def scale_docker_service(
+        self, node: str, vmid: int, service_name: str, replicas: int
+    ) -> Dict[str, Any]:
         """Scale Docker Swarm service."""
         command = f"docker service scale {service_name}={replicas}"
         return self.execute_docker_command(node, vmid, command)
 
-    def remove_docker_service(self, node: str, vmid: int, service_name: str) -> Dict[str, Any]:
+    def remove_docker_service(
+        self, node: str, vmid: int, service_name: str
+    ) -> Dict[str, Any]:
         """Remove Docker Swarm service."""
         command = f"docker service rm {service_name}"
         return self.execute_docker_command(node, vmid, command)
 
-    def create_docker_network(self, node: str, vmid: int, network_name: str, 
-                             driver: str = "overlay", subnet: Optional[str] = None,
-                             attachable: bool = False, encrypted: bool = False) -> Dict[str, Any]:
+    def create_docker_network(
+        self,
+        node: str,
+        vmid: int,
+        network_name: str,
+        driver: str = "overlay",
+        subnet: Optional[str] = None,
+        attachable: bool = False,
+        encrypted: bool = False,
+    ) -> Dict[str, Any]:
         """Create Docker network."""
         command = f"docker network create --driver {driver}"
-        
+
         if subnet:
             command += f" --subnet {subnet}"
         if attachable:
             command += " --attachable"
         if encrypted:
             command += " --opt encrypted"
-        
+
         command += f" {network_name}"
-        
+
         return self.execute_docker_command(node, vmid, command)
 
-    def get_docker_service_logs(self, node: str, vmid: int, service_name: str, 
-                               lines: int = 100) -> Dict[str, Any]:
+    def get_docker_service_logs(
+        self, node: str, vmid: int, service_name: str, lines: int = 100
+    ) -> Dict[str, Any]:
         """Get Docker service logs."""
         command = f"docker service logs --tail {lines} {service_name}"
         return self.execute_docker_command(node, vmid, command)
@@ -1086,48 +1302,49 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
     def get_swarm_cluster_info(self, cluster_name: str) -> Dict[str, Any]:
         """Get comprehensive Docker Swarm cluster information."""
         cluster_vms = self.get_cluster_vms(cluster_name)
-        
+
         if not cluster_vms:
             return {"error": f"No VMs found for cluster: {cluster_name}"}
-        
+
         # Find manager nodes (assuming naming convention)
-        manager_vms = [vm for vm in cluster_vms if "manager" in vm.get("name", "").lower()]
-        worker_vms = [vm for vm in cluster_vms if "worker" in vm.get("name", "").lower()]
-        
+        manager_vms = [
+            vm for vm in cluster_vms if "manager" in vm.get("name", "").lower()
+        ]
+        worker_vms = [
+            vm for vm in cluster_vms if "worker" in vm.get("name", "").lower()
+        ]
+
         cluster_info = {
             "cluster_name": cluster_name,
             "total_nodes": len(cluster_vms),
             "manager_nodes": len(manager_vms),
             "worker_nodes": len(worker_vms),
-            "nodes": []
+            "nodes": [],
         }
-        
+
         # Get detailed info from primary manager if available
         if manager_vms:
             primary_manager = manager_vms[0]
             try:
                 swarm_status = self.get_docker_swarm_status(
-                    primary_manager["node"], 
-                    primary_manager["vmid"]
+                    primary_manager["node"], primary_manager["vmid"]
                 )
                 cluster_info["swarm_status"] = swarm_status
-                
+
                 if swarm_status.get("success"):
                     # Get nodes and services info
                     nodes_info = self.list_swarm_nodes(
-                        primary_manager["node"], 
-                        primary_manager["vmid"]
+                        primary_manager["node"], primary_manager["vmid"]
                     )
                     services_info = self.list_swarm_services(
-                        primary_manager["node"], 
-                        primary_manager["vmid"]
+                        primary_manager["node"], primary_manager["vmid"]
                     )
-                    
+
                     cluster_info["nodes_info"] = nodes_info
                     cluster_info["services_info"] = services_info
             except Exception as e:
                 cluster_info["error"] = f"Failed to get cluster details: {str(e)}"
-        
+
         # Add VM details
         for vm in cluster_vms:
             vm_info = {
@@ -1135,8 +1352,10 @@ Get-WindowsUpdate -Install -AcceptAll -AutoReboot
                 "name": vm["name"],
                 "status": vm.get("status", "unknown"),
                 "node": vm.get("node", "unknown"),
-                "role": "manager" if "manager" in vm.get("name", "").lower() else "worker"
+                "role": "manager"
+                if "manager" in vm.get("name", "").lower()
+                else "worker",
             }
             cluster_info["nodes"].append(vm_info)
-        
+
         return cluster_info

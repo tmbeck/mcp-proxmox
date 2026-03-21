@@ -8,17 +8,13 @@ Advanced Proxmox Model Context Protocol (MCP) server in Python exposing rich Pro
 ## Quick start
 
 ```bash
-git clone https://github.com/bsahane/mcp-proxmox.git
+git clone https://github.com/tmbeck/mcp-proxmox.git
 cd mcp-proxmox
 
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-pip install -r requirements.txt
-
-# (Optional) install the package locally
-pip install -e .
+uv sync --dev
 ```
+
+Run commands in the project environment with `uv run ...` (no manual activation required).
 
 ## .env configuration
 
@@ -43,21 +39,21 @@ PROXMOX_DEFAULT_BRIDGE="vmbr0"
 Notes:
 - Use an API token with appropriate ACLs; for discovery, `PVEAuditor` at `/` is sufficient; for lifecycle, grant narrower roles (e.g., `PVEVMAdmin`) on a pool.
 - Using `.env` avoids zsh history expansion issues with `!` in token IDs.
+- Outbound URL policy is strict by default: only private/local hosts are allowed unless explicitly listed in `PROXMOX_ALLOWED_URLS`.
+- Third-party integrations are disabled by default (`PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS=false`).
 
 ## Run the MCP server (stdio)
 
 Preferred (module form):
 
 ```bash
-source .venv/bin/activate
-python -m proxmox_mcp.server
+uv run python -m proxmox_mcp.server
 ```
 
 Or installed console script:
 
 ```bash
-source .venv/bin/activate
-proxmox-mcp
+uv run proxmox-mcp
 ```
 
 ## Configure in Cursor
@@ -66,12 +62,12 @@ Edit `~/.cursor/mcp.json` (portable example):
 
 ```json
 {
-  "mcpServers": {
-    "proxmox-mcp": {
-      "command": "python",
-      "args": ["-m", "proxmox_mcp.server"]
+    "mcpServers": {
+      "proxmox-mcp": {
+        "command": "uv",
+        "args": ["run", "python", "-m", "proxmox_mcp.server"]
+      }
     }
-  }
 }
 ```
 
@@ -81,12 +77,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
-  "mcpServers": {
-    "proxmox-mcp": {
-      "command": "python",
-      "args": ["-m", "proxmox_mcp.server"]
+    "mcpServers": {
+      "proxmox-mcp": {
+        "command": "uv",
+        "args": ["run", "python", "-m", "proxmox_mcp.server"]
+      }
     }
-  }
 }
 ```
 
@@ -236,7 +232,9 @@ Format below per tool:
 ## Development
 
 ```bash
-# Lint/type-check as needed (not included by default)
+uv run pytest
+uv run ruff check .
+uv run mypy src
 ```
 
 ## License

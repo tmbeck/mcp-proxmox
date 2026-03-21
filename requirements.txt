@@ -1,7 +1,0 @@
-# This project now uses uv + pyproject.toml as the source of truth.
-#
-# Install dependencies with:
-#   uv sync --dev
-#
-# If you need a pip-compatible lock/requirements export:
-#   uv export --frozen --format requirements-txt --output-file requirements.lock.txt

@@ -761,15 +761,18 @@ class AdvancedStorageManager:
             optimizations = []
 
             # Check filesystem type and mount options
-            safe_storage = storage_name.replace("'", "")
-            mount_cmd = f"mount | grep -- '{safe_storage}'"
-            result = await run_command(mount_cmd, shell=True)
+            result = await run_command(["mount"])
 
             if result["return_code"] == 0:
-                mount_info = result["stdout"]
+                mount_lines = [
+                    line
+                    for line in result["stdout"].splitlines()
+                    if storage_name in line
+                ]
+                mount_info = "\n".join(mount_lines)
 
                 # Check for performance-related mount options
-                if "noatime" not in mount_info:
+                if mount_info and "noatime" not in mount_info:
                     optimizations.append(
                         {
                             "optimization": "noatime_mount_option",

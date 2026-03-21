@@ -9,6 +9,16 @@ from proxmoxer import ProxmoxAPI
 from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 
+def get_default_lxc_password() -> str:
+    """Return the configured default LXC password or fail closed."""
+    password = os.environ.get("PROXMOX_DEFAULT_LXC_PASSWORD", "").strip()
+    if not password:
+        raise ValueError(
+            "PROXMOX_DEFAULT_LXC_PASSWORD must be set before creating an LXC container"
+        )
+    return password
+
+
 class ProxmoxClient:
     """Wrapper around proxmoxer.ProxmoxAPI with helper methods and sane defaults."""
 
@@ -34,10 +44,13 @@ class ProxmoxClient:
         self.timeout = timeout
 
         url = parse_api_url(base_url)
+        self.host = url["host"]
+        self.port = url["port"]
+        self.scheme = url["scheme"]
         token_parts = split_token_id(token_id)
         self._api = ProxmoxAPI(
-            url["host"],
-            port=url["port"],
+            self.host,
+            port=self.port,
             user=token_parts["user"],
             token_name=token_parts["token_name"],
             token_value=token_secret,
@@ -331,7 +344,7 @@ class ProxmoxClient:
             else f"{storage_id}:vztmpl/{ostemplate}",
             "rootfs": rootfs,
             "net0": net0,
-            "password": os.environ.get("PROXMOX_DEFAULT_LXC_PASSWORD", "changeMe123!"),
+            "password": get_default_lxc_password(),
         }
         return self._api.nodes(node).lxc.post(**params)
 

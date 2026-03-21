@@ -27,7 +27,10 @@ import jwt
 from loguru import logger
 
 from .client import ProxmoxClient
-from .utils import format_error, require_allowed_url, integrations_enabled
+from .utils import format_error, require_allowed_url, integrations_enabled, strtobool
+
+
+LOCAL_GATEWAY_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 class IntegrationManager:
@@ -44,7 +47,10 @@ class IntegrationManager:
 
         # API Gateway
         self.api_app: Optional[FastAPI] = None
-        self.security = HTTPBearer()
+        self.security = HTTPBearer(auto_error=False)
+        self.verify_token: Optional[Callable[..., Any]] = None
+        self.api_gateway_host = "127.0.0.1"
+        self.api_gateway_port = 8000
 
         # Third-party integrations
         self.integrations = {}
@@ -52,6 +58,57 @@ class IntegrationManager:
         # Event queue
         self.event_queue = asyncio.Queue()
         self.event_processor_task = None
+
+    def _remote_gateway_allowed(self) -> bool:
+        return strtobool(os.getenv("PROXMOX_API_GATEWAY_ALLOW_REMOTE"), False)
+
+    def _resolve_gateway_host(self, bind_host: Optional[str] = None) -> str:
+        host = (bind_host or os.getenv("PROXMOX_API_GATEWAY_HOST", "127.0.0.1")).strip()
+        if not host:
+            host = "127.0.0.1"
+
+        if host not in LOCAL_GATEWAY_HOSTS and not self._remote_gateway_allowed():
+            raise ValueError(
+                "Remote API gateway exposure is disabled by default. "
+                "Set PROXMOX_API_GATEWAY_ALLOW_REMOTE=true to bind to a non-local host."
+            )
+
+        return host
+
+    def _resolve_cors_origins(
+        self, cors_origins: Optional[List[str]] = None
+    ) -> List[str]:
+        if cors_origins is not None:
+            origins = [origin.strip() for origin in cors_origins if origin.strip()]
+            return origins
+
+        env_origins = os.getenv("PROXMOX_API_GATEWAY_CORS_ORIGINS", "")
+        if env_origins.strip():
+            return [
+                origin.strip() for origin in env_origins.split(",") if origin.strip()
+            ]
+
+        return ["http://127.0.0.1", "http://localhost"]
+
+    def _sanitize_webhook_for_api(self, webhook: Dict[str, Any]) -> Dict[str, Any]:
+        clean = dict(webhook)
+        if clean.get("secret_token"):
+            clean["secret_token"] = "***"
+        return clean
+
+    async def _require_api_auth(
+        self,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+            HTTPBearer(auto_error=False)
+        ),
+    ) -> Dict[str, Any]:
+        if self.verify_token is None:
+            raise HTTPException(
+                status_code=503, detail="API gateway authentication is not configured"
+            )
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Missing bearer token")
+        return await self.verify_token(credentials)
 
     async def setup_webhooks(
         self,
@@ -329,47 +386,75 @@ class IntegrationManager:
         cors_enabled: bool = True,
         api_versioning: bool = True,
         port: int = 8000,
+        bind_host: Optional[str] = None,
+        cors_origins: Optional[List[str]] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Deploy API gateway for enhanced API management"""
         try:
+            if auth_providers is None:
+                auth_providers = ["jwt"]
+
+            bind_host = self._resolve_gateway_host(bind_host)
+            resolved_cors_origins = self._resolve_cors_origins(cors_origins)
+
             if dry_run:
                 return {
                     "action": "api_gateway",
                     "enable_rate_limiting": enable_rate_limiting,
-                    "auth_providers": auth_providers or [],
+                    "auth_providers": auth_providers,
                     "cors_enabled": cors_enabled,
+                    "cors_origins": resolved_cors_origins if cors_enabled else [],
                     "api_versioning": api_versioning,
                     "port": port,
+                    "bind_host": bind_host,
+                    "remote_exposure": bind_host not in LOCAL_GATEWAY_HOSTS,
                     "dry_run": True,
                     "status": "would_execute",
                 }
 
-            if auth_providers is None:
-                auth_providers = ["oauth2", "jwt"]
+            auth_providers = [
+                provider.strip().lower()
+                for provider in auth_providers
+                if provider.strip()
+            ]
+            unsupported_auth = sorted(set(auth_providers) - {"jwt"})
+            if unsupported_auth:
+                raise ValueError(
+                    "Unsupported API gateway auth providers: "
+                    f"{', '.join(unsupported_auth)}. Only 'jwt' is currently supported."
+                )
+            if "jwt" not in auth_providers:
+                raise ValueError(
+                    "API gateway management routes require 'jwt' authentication"
+                )
 
             # Create FastAPI application
-            self.api_app = FastAPI(
-                title="Proxmox MCP API Gateway",
-                description="Enhanced API gateway for Proxmox MCP Server",
-                version="1.0.0" if api_versioning else None,
-            )
+            fastapi_kwargs: Dict[str, Any] = {
+                "title": "Proxmox MCP API Gateway",
+                "description": "Enhanced API gateway for Proxmox MCP Server",
+            }
+            if api_versioning:
+                fastapi_kwargs["version"] = "1.0.0"
+            self.api_app = FastAPI(**fastapi_kwargs)
 
             # Configure CORS
-            if cors_enabled:
+            if cors_enabled and resolved_cors_origins:
                 if self.api_app is None:
                     raise RuntimeError("API application not initialized")
                 self.api_app.add_middleware(
                     CORSMiddleware,
-                    allow_origins=["*"],
-                    allow_credentials=True,
+                    allow_origins=resolved_cors_origins,
+                    allow_credentials=False,
                     allow_methods=["*"],
                     allow_headers=["*"],
                 )
 
+            self.api_gateway_host = bind_host
+            self.api_gateway_port = port
+
             # Setup authentication
-            if "jwt" in auth_providers:
-                await self._setup_jwt_auth()
+            await self._setup_jwt_auth()
 
             # Setup rate limiting
             if enable_rate_limiting:
@@ -379,10 +464,13 @@ class IntegrationManager:
             await self._setup_api_routes()
 
             result = {
-                "api_gateway_url": f"http://localhost:{port}",
+                "api_gateway_url": f"http://{bind_host}:{port}",
+                "bind_host": bind_host,
+                "remote_exposure": bind_host not in LOCAL_GATEWAY_HOSTS,
                 "features": {
                     "rate_limiting": enable_rate_limiting,
                     "cors": cors_enabled,
+                    "cors_origins": resolved_cors_origins if cors_enabled else [],
                     "versioning": api_versioning,
                     "auth_providers": auth_providers,
                 },
@@ -407,27 +495,27 @@ class IntegrationManager:
 
     async def _setup_jwt_auth(self):
         """Setup JWT authentication for API gateway"""
-        try:
-            # JWT secret key (in production, use proper key management)
-            self.jwt_secret = os.getenv("JWT_SECRET", "your-secret-key-here")
+        jwt_secret = os.getenv("JWT_SECRET", "").strip()
+        if not jwt_secret:
+            raise ValueError(
+                "JWT_SECRET must be set when enabling the API gateway. "
+                "This keeps management routes authenticated by default."
+            )
 
-            async def verify_token(
-                credentials: HTTPAuthorizationCredentials = Depends(self.security),
-            ):
-                try:
-                    payload = jwt.decode(
-                        credentials.credentials, self.jwt_secret, algorithms=["HS256"]
-                    )
-                    return payload
-                except jwt.ExpiredSignatureError:
-                    raise HTTPException(status_code=401, detail="Token expired")
-                except jwt.InvalidTokenError:
-                    raise HTTPException(status_code=401, detail="Invalid token")
+        self.jwt_secret = jwt_secret
 
-            self.verify_token = verify_token
+        async def verify_token(credentials: HTTPAuthorizationCredentials):
+            try:
+                payload = jwt.decode(
+                    credentials.credentials, self.jwt_secret, algorithms=["HS256"]
+                )
+                return payload
+            except jwt.ExpiredSignatureError as exc:
+                raise HTTPException(status_code=401, detail="Token expired") from exc
+            except jwt.InvalidTokenError as exc:
+                raise HTTPException(status_code=401, detail="Invalid token") from exc
 
-        except Exception as e:
-            logger.error(f"JWT auth setup failed: {e}")
+        self.verify_token = verify_token
 
     async def _setup_rate_limiting(self):
         """Setup rate limiting for API gateway"""
@@ -439,7 +527,7 @@ class IntegrationManager:
             self.rate_limit_store = {}
 
             async def rate_limit_middleware(request: Request, call_next):
-                client_ip = request.client.host
+                client_ip = request.client.host if request.client else "unknown"
                 current_time = datetime.now().timestamp()
 
                 # Clean old entries
@@ -478,7 +566,9 @@ class IntegrationManager:
             async def health_check():
                 return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-            @self.api_app.get("/metrics")
+            @self.api_app.get(
+                "/metrics", dependencies=[Depends(self._require_api_auth)]
+            )
             async def get_metrics():
                 # Return Prometheus metrics
                 from .monitoring import MonitoringManager
@@ -486,15 +576,26 @@ class IntegrationManager:
                 monitoring = MonitoringManager(self.client)
                 return await monitoring.get_prometheus_metrics()
 
-            @self.api_app.get("/webhooks")
+            @self.api_app.get(
+                "/webhooks", dependencies=[Depends(self._require_api_auth)]
+            )
             async def list_webhooks():
-                return {"webhooks": list(self.webhooks.values())}
+                return {
+                    "webhooks": [
+                        self._sanitize_webhook_for_api(webhook)
+                        for webhook in self.webhooks.values()
+                    ]
+                }
 
-            @self.api_app.post("/webhooks")
+            @self.api_app.post(
+                "/webhooks", dependencies=[Depends(self._require_api_auth)]
+            )
             async def create_webhook(webhook_data: dict):
                 return await self.setup_webhooks(**webhook_data)
 
-            @self.api_app.delete("/webhooks/{webhook_id}")
+            @self.api_app.delete(
+                "/webhooks/{webhook_id}", dependencies=[Depends(self._require_api_auth)]
+            )
             async def delete_webhook(webhook_id: str):
                 if webhook_id in self.webhooks:
                     del self.webhooks[webhook_id]
@@ -502,7 +603,7 @@ class IntegrationManager:
                     return {"deleted": True}
                 return {"deleted": False, "error": "Webhook not found"}
 
-            @self.api_app.get("/events")
+            @self.api_app.get("/events", dependencies=[Depends(self._require_api_auth)])
             async def get_events():
                 # Return recent events (implement event history storage)
                 return {"events": [], "message": "Event history not implemented"}
@@ -754,7 +855,7 @@ class IntegrationManager:
                 raise ValueError("Jira base_url, username, and api_token are required")
 
             # Test Jira integration
-            auth = (username, api_token)
+            auth = (str(username), str(api_token))
 
             async with httpx.AsyncClient() as client:
                 require_allowed_url(
@@ -1113,12 +1214,21 @@ class IntegrationManager:
             logger.error(f"PagerDuty notification failed: {e}")
             raise
 
-    async def start_api_server(self, port: int = 8000):
+    async def start_api_server(
+        self, port: Optional[int] = None, bind_host: Optional[str] = None
+    ):
         """Start the API gateway server"""
         try:
             if self.api_app:
+                resolved_host = self._resolve_gateway_host(
+                    bind_host or self.api_gateway_host
+                )
+                resolved_port = port or self.api_gateway_port
                 config = uvicorn.Config(
-                    self.api_app, host="0.0.0.0", port=port, log_level="info"
+                    self.api_app,
+                    host=resolved_host,
+                    port=resolved_port,
+                    log_level="info",
                 )
                 server = uvicorn.Server(config)
                 await server.serve()

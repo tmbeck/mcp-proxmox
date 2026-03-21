@@ -16,6 +16,12 @@ uv sync --dev
 
 Run commands in the project environment with `uv run ...` (no manual activation required).
 
+For a local tool-style install, you can also use:
+
+```bash
+uv tool install .
+```
+
 ## .env configuration
 
 - Copy `.env.example` to `.env` and edit values:
@@ -34,6 +40,7 @@ PROXMOX_VERIFY="true"
 PROXMOX_DEFAULT_NODE="pve"
 PROXMOX_DEFAULT_STORAGE="local-lvm"
 PROXMOX_DEFAULT_BRIDGE="vmbr0"
+PROXMOX_DEFAULT_LXC_PASSWORD=""
 ```
 
 Notes:
@@ -41,6 +48,10 @@ Notes:
 - Using `.env` avoids zsh history expansion issues with `!` in token IDs.
 - Outbound URL policy is strict by default: only private/local hosts are allowed unless explicitly listed in `PROXMOX_ALLOWED_URLS`.
 - Third-party integrations are disabled by default (`PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS=false`).
+- The optional API gateway is local-first by default (`PROXMOX_API_GATEWAY_HOST=127.0.0.1`), keeps `/health` unauthenticated, and requires `JWT_SECRET` for management routes.
+- To share the API gateway from a Docker/container deployment, explicitly set `PROXMOX_API_GATEWAY_ALLOW_REMOTE=true`, choose a non-local host such as `0.0.0.0`, and set explicit `PROXMOX_API_GATEWAY_CORS_ORIGINS` values.
+- `PROXMOX_DEFAULT_LXC_PASSWORD` must be set before using `proxmox-create-lxc`; the server no longer falls back to a predictable default password.
+- Generated monitoring/logging stacks are now local-first by default (`PROXMOX_MONITORING_BIND_HOST=127.0.0.1`) and expect operator-supplied secrets via `PROXMOX_GRAFANA_ADMIN_PASSWORD` and `PROXMOX_ELASTIC_PASSWORD`.
 
 ## Run the MCP server (stdio)
 

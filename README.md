@@ -292,6 +292,10 @@ uv run ruff check .
 uv run mypy src
 ```
 
+Notes:
+- `uv run pytest` runs the stable automated suite.
+- Manual/integration-oriented scripts such as `test_resources.py` and `test_multi_cluster_server.py` are intentionally excluded from pytest collection; run them directly when you want live-environment checks.
+
 ## License
 
 MIT

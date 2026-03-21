@@ -111,6 +111,15 @@ Profile guide:
 - `security`: MFA, certificates, and secret-store helpers
 - `ai`: AI/optimization helpers
 
+## Compatibility
+
+- Python: automated CI currently runs on Python `3.11`.
+- Client library: the project targets `proxmoxer>=2.0.1`.
+- Proxmox VE: this repository does not yet claim a certified live-cluster compatibility matrix.
+- Current expectation: the MCP server is written against the modern Proxmox VE API shape used by recent releases, but you should validate it against your own cluster before production rollout.
+- Current automated coverage: code-level tests, profile composition, security regressions, and packaging/entrypoint behavior.
+- Not yet covered by CI: live integration tests against specific Proxmox VE versions or cluster topologies.
+
 ## Configure in Cursor
 
 Edit `~/.cursor/mcp.json` (portable example):

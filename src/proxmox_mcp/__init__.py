@@ -1,46 +1,52 @@
-"""
-MCP Proxmox - A Model Context Protocol (MCP) server for Proxmox Virtual Environment
-"""
+"""MCP Proxmox package exports."""
+
+from __future__ import annotations
+
+from importlib import import_module
+
 
 __version__ = "0.2.0"
 
-from .client import ProxmoxClient
-from .server import server
-from .utils import require_confirm, format_size, ClusterConfig, ClusterRegistryConfig, read_multi_cluster_env, load_cluster_registry_config, is_multi_cluster_mode
-from .cloudinit import CloudInitConfig, CloudInitProvisioner
-from .rhcos import IgnitionConfig, RHCOSProvisioner, OpenShiftInstaller
-from .windows import WindowsConfig, WindowsProvisioner
-from .docker_swarm import DockerSwarmConfig, DockerSwarmProvisioner
-from .cluster_manager import ClusterRegistry, get_cluster_registry, reset_cluster_registry, ClusterError, ClusterNotFoundError, ClusterConnectionError, AmbiguousClusterSelectionError
-from .multi_cluster_client import MultiClusterProxmoxClient
+_EXPORTS = {
+    "ProxmoxClient": ("client", "ProxmoxClient"),
+    "server": ("server", "server"),
+    "require_confirm": ("utils", "require_confirm"),
+    "format_size": ("utils", "format_size"),
+    "ClusterConfig": ("utils", "ClusterConfig"),
+    "ClusterRegistryConfig": ("utils", "ClusterRegistryConfig"),
+    "read_multi_cluster_env": ("utils", "read_multi_cluster_env"),
+    "load_cluster_registry_config": ("utils", "load_cluster_registry_config"),
+    "is_multi_cluster_mode": ("utils", "is_multi_cluster_mode"),
+    "CloudInitConfig": ("cloudinit", "CloudInitConfig"),
+    "CloudInitProvisioner": ("cloudinit", "CloudInitProvisioner"),
+    "IgnitionConfig": ("rhcos", "IgnitionConfig"),
+    "RHCOSProvisioner": ("rhcos", "RHCOSProvisioner"),
+    "OpenShiftInstaller": ("rhcos", "OpenShiftInstaller"),
+    "WindowsConfig": ("windows", "WindowsConfig"),
+    "WindowsProvisioner": ("windows", "WindowsProvisioner"),
+    "DockerSwarmConfig": ("docker_swarm", "DockerSwarmConfig"),
+    "DockerSwarmProvisioner": ("docker_swarm", "DockerSwarmProvisioner"),
+    "ClusterRegistry": ("cluster_manager", "ClusterRegistry"),
+    "get_cluster_registry": ("cluster_manager", "get_cluster_registry"),
+    "reset_cluster_registry": ("cluster_manager", "reset_cluster_registry"),
+    "ClusterError": ("cluster_manager", "ClusterError"),
+    "ClusterNotFoundError": ("cluster_manager", "ClusterNotFoundError"),
+    "ClusterConnectionError": ("cluster_manager", "ClusterConnectionError"),
+    "AmbiguousClusterSelectionError": (
+        "cluster_manager",
+        "AmbiguousClusterSelectionError",
+    ),
+    "MultiClusterProxmoxClient": ("multi_cluster_client", "MultiClusterProxmoxClient"),
+}
 
-__all__ = [
-    "__version__",
-    "ProxmoxClient",
-    "server", 
-    "require_confirm",
-    "format_size",
-    "CloudInitConfig",
-    "CloudInitProvisioner",
-    "IgnitionConfig",
-    "RHCOSProvisioner",
-    "OpenShiftInstaller",
-    "WindowsConfig",
-    "WindowsProvisioner",
-    "DockerSwarmConfig",
-    "DockerSwarmProvisioner",
-    # Multi-cluster support
-    "ClusterConfig",
-    "ClusterRegistryConfig",
-    "ClusterRegistry",
-    "MultiClusterProxmoxClient",
-    "get_cluster_registry",
-    "reset_cluster_registry",
-    "ClusterError",
-    "ClusterNotFoundError",
-    "ClusterConnectionError",
-    "AmbiguousClusterSelectionError",
-    "read_multi_cluster_env",
-    "load_cluster_registry_config",
-    "is_multi_cluster_mode",
-]
+__all__ = ["__version__", *_EXPORTS.keys()]
+
+
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attr_name = _EXPORTS[name]
+    value = getattr(import_module(f".{module_name}", __name__), attr_name)
+    globals()[name] = value
+    return value

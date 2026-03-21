@@ -41,6 +41,7 @@ PROXMOX_DEFAULT_NODE="pve"
 PROXMOX_DEFAULT_STORAGE="local-lvm"
 PROXMOX_DEFAULT_BRIDGE="vmbr0"
 PROXMOX_DEFAULT_LXC_PASSWORD=""
+PROXMOX_MCP_PROFILES="core"
 ```
 
 Notes:
@@ -52,6 +53,7 @@ Notes:
 - To share the API gateway from a Docker/container deployment, explicitly set `PROXMOX_API_GATEWAY_ALLOW_REMOTE=true`, choose a non-local host such as `0.0.0.0`, and set explicit `PROXMOX_API_GATEWAY_CORS_ORIGINS` values.
 - `PROXMOX_DEFAULT_LXC_PASSWORD` must be set before using `proxmox-create-lxc`; the server no longer falls back to a predictable default password.
 - Generated monitoring/logging stacks are now local-first by default (`PROXMOX_MONITORING_BIND_HOST=127.0.0.1`) and expect operator-supplied secrets via `PROXMOX_GRAFANA_ADMIN_PASSWORD` and `PROXMOX_ELASTIC_PASSWORD`.
+- `PROXMOX_MCP_PROFILES` can preselect optional tool surfaces for a deployment; the CLI `--profile` flag overrides it.
 
 ## Run the MCP server (stdio)
 
@@ -66,6 +68,37 @@ Or installed console script:
 ```bash
 uv run proxmox-mcp
 ```
+
+Profiles:
+
+- Default behavior is `core`, which includes direct Proxmox management and guest provisioning.
+- Optional profiles layer on broader control-plane features without changing the default surface.
+
+```bash
+# Show available profiles
+uv run proxmox-mcp --list-profiles
+
+# Run the default core profile (same as omitting --profile)
+uv run proxmox-mcp --profile core
+
+# Add shared control-plane features such as webhooks and the optional API gateway
+uv run proxmox-mcp --profile control-plane
+
+# Compose multiple profiles
+uv run proxmox-mcp --profile observability --profile automation
+
+# Enable every optional profile
+uv run proxmox-mcp --profile full
+```
+
+Profile guide:
+
+- `core`: default; direct Proxmox operations, provisioning, and guest lifecycle
+- `control-plane`: optional API gateway, webhooks, and external integrations
+- `observability`: monitoring, logging, and performance-analysis helpers
+- `automation`: Docker Swarm, OpenShift, IaC/GitOps, and advanced storage/network automation
+- `security`: MFA, certificates, and secret-store helpers
+- `ai`: AI/optimization helpers
 
 ## Configure in Cursor
 

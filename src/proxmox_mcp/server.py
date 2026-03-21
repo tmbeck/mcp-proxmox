@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import os
+import sys
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -16,30 +18,19 @@ from .cloudinit import (
     get_docker_host_config,
     get_development_config,
 )
-from .rhcos import IgnitionConfig, RHCOSProvisioner, OpenShiftInstaller
+from .rhcos import IgnitionConfig, RHCOSProvisioner
 from .windows import (
     WindowsConfig,
     WindowsProvisioner,
     get_windows_web_server_config,
     get_windows_domain_controller_config,
 )
-from .docker_swarm import (
-    DockerSwarmConfig,
-    DockerSwarmProvisioner,
-    get_web_cluster_config,
-    get_development_cluster_config,
-    get_production_cluster_config,
-)
-
-# Import new feature modules
-from .security import SecurityManager
-from .infrastructure import InfrastructureManager
-from .network import NetworkManager
-from .monitoring import MonitoringManager
-from .storage_advanced import AdvancedStorageManager
-from .ai_optimization import AIOptimizationManager
-from .integrations import IntegrationManager
 from .notes_manager import NotesManager
+from .tool_profiles import (
+    PROFILE_DESCRIPTIONS,
+    apply_profiles_to_server,
+    resolve_profiles,
+)
 
 
 server = FastMCP("proxmox-mcp")
@@ -75,6 +66,72 @@ def get_client(cluster_name: Optional[str] = None) -> ProxmoxClient:
         # Single-cluster mode: use environment variables
         read_env()
         return ProxmoxClient.from_env()
+
+
+def get_openshift_installer(client: ProxmoxClient):
+    from .rhcos import OpenShiftInstaller
+
+    return OpenShiftInstaller(client)
+
+
+def get_docker_swarm_symbols():
+    from .docker_swarm import (
+        DockerSwarmConfig,
+        DockerSwarmProvisioner,
+        get_web_cluster_config,
+        get_development_cluster_config,
+        get_production_cluster_config,
+    )
+
+    return {
+        "DockerSwarmConfig": DockerSwarmConfig,
+        "DockerSwarmProvisioner": DockerSwarmProvisioner,
+        "get_web_cluster_config": get_web_cluster_config,
+        "get_development_cluster_config": get_development_cluster_config,
+        "get_production_cluster_config": get_production_cluster_config,
+    }
+
+
+def get_security_manager(client: ProxmoxClient):
+    from .security import SecurityManager
+
+    return SecurityManager(client)
+
+
+def get_infrastructure_manager(client: ProxmoxClient):
+    from .infrastructure import InfrastructureManager
+
+    return InfrastructureManager(client)
+
+
+def get_network_manager(client: ProxmoxClient):
+    from .network import NetworkManager
+
+    return NetworkManager(client)
+
+
+def get_monitoring_manager(client: ProxmoxClient):
+    from .monitoring import MonitoringManager
+
+    return MonitoringManager(client)
+
+
+def get_storage_manager(client: ProxmoxClient):
+    from .storage_advanced import AdvancedStorageManager
+
+    return AdvancedStorageManager(client)
+
+
+def get_ai_manager(client: ProxmoxClient):
+    from .ai_optimization import AIOptimizationManager
+
+    return AIOptimizationManager(client)
+
+
+def get_integration_manager(client: ProxmoxClient):
+    from .integrations import IntegrationManager
+
+    return IntegrationManager(client)
 
 
 # ---------- Multi-Cluster Helper Tools ----------
@@ -2078,7 +2135,7 @@ async def proxmox_deploy_openshift_cluster(
         }
 
     # Deploy cluster
-    installer = OpenShiftInstaller(client)
+    installer = get_openshift_installer(client)
     deployment_result = installer.deploy_cluster(
         cluster_config, node_id, storage_id, bridge_id, base_vmid
     )
@@ -2146,7 +2203,7 @@ async def proxmox_deploy_openshift_sno(
         }
 
     # Deploy SNO cluster
-    installer = OpenShiftInstaller(client)
+    installer = get_openshift_installer(client)
     deployment_result = installer.deploy_single_node_cluster(
         cluster_config, node_id, storage_id, bridge_id, vmid
     )
@@ -2734,7 +2791,8 @@ async def proxmox_create_docker_swarm(
         }
 
     # Create Docker Swarm configuration
-    swarm_config = DockerSwarmConfig(cluster_name, base_os)
+    docker_swarm = get_docker_swarm_symbols()
+    swarm_config = docker_swarm["DockerSwarmConfig"](cluster_name, base_os)
 
     # Add manager nodes
     for i in range(manager_count):
@@ -2759,7 +2817,7 @@ async def proxmox_create_docker_swarm(
         )
 
     # Create cluster
-    provisioner = DockerSwarmProvisioner(client)
+    provisioner = docker_swarm["DockerSwarmProvisioner"](client)
     deployment_result = provisioner.create_swarm_cluster(
         swarm_config, node_id, storage_id, bridge_id, ssh_keys, base_vmid
     )
@@ -2793,10 +2851,11 @@ async def proxmox_create_docker_swarm_preset(
     require_confirm(confirm)
 
     # Get preset configuration
+    docker_swarm = get_docker_swarm_symbols()
     preset_configs = {
-        "web": get_web_cluster_config,
-        "development": get_development_cluster_config,
-        "production": get_production_cluster_config,
+        "web": docker_swarm["get_web_cluster_config"],
+        "development": docker_swarm["get_development_cluster_config"],
+        "production": docker_swarm["get_production_cluster_config"],
     }
 
     if preset not in preset_configs:
@@ -2828,7 +2887,7 @@ async def proxmox_create_docker_swarm_preset(
         swarm_config = preset_configs[preset](cluster_name)
 
     # Create cluster
-    provisioner = DockerSwarmProvisioner(client)
+    provisioner = docker_swarm["DockerSwarmProvisioner"](client)
     deployment_result = provisioner.create_swarm_cluster(
         swarm_config, node_id, storage_id, bridge_id, ssh_keys, base_vmid
     )
@@ -3159,7 +3218,7 @@ async def proxmox_setup_mfa(
 ) -> Dict[str, Any]:
     """Setup multi-factor authentication for Proxmox users"""
     client = get_client()
-    security_manager = SecurityManager(client)
+    security_manager = get_security_manager(client)
     return await security_manager.setup_mfa(username, mfa_type, qr_code_path, dry_run)
 
 
@@ -3173,7 +3232,7 @@ async def proxmox_manage_certificates(
 ) -> Dict[str, Any]:
     """Manage SSL certificates for Proxmox and VMs"""
     client = get_client()
-    security_manager = SecurityManager(client)
+    security_manager = get_security_manager(client)
     return await security_manager.manage_certificates(
         action, cert_type, domains or [], auto_renew, dry_run
     )
@@ -3188,7 +3247,7 @@ async def proxmox_secret_store(
 ) -> Dict[str, Any]:
     """Secure secret storage for VM credentials and API keys"""
     client = get_client()
-    security_manager = SecurityManager(client)
+    security_manager = get_security_manager(client)
 
     if action == "store":
         if not secret_value:
@@ -3222,7 +3281,7 @@ async def proxmox_terraform_plan(
 ) -> Dict[str, Any]:
     """Execute Terraform plans for infrastructure as code"""
     client = get_client()
-    infra_manager = InfrastructureManager(client)
+    infra_manager = get_infrastructure_manager(client)
     return await infra_manager.terraform_plan(
         config_path, workspace, auto_approve, dry_run
     )
@@ -3238,7 +3297,7 @@ async def proxmox_ansible_playbook(
 ) -> Dict[str, Any]:
     """Execute Ansible playbooks against Proxmox VMs"""
     client = get_client()
-    infra_manager = InfrastructureManager(client)
+    infra_manager = get_infrastructure_manager(client)
     return await infra_manager.ansible_playbook(
         playbook_path, inventory, extra_vars, limit, dry_run
     )
@@ -3254,7 +3313,7 @@ async def proxmox_gitops_sync(
 ) -> Dict[str, Any]:
     """Sync infrastructure state with Git repository"""
     client = get_client()
-    infra_manager = InfrastructureManager(client)
+    infra_manager = get_infrastructure_manager(client)
     return await infra_manager.gitops_sync(
         repo_url, branch, config_path, auto_deploy, dry_run
     )
@@ -3275,7 +3334,7 @@ async def proxmox_create_vlan(
 ) -> Dict[str, Any]:
     """Create and configure VLANs for network segmentation"""
     client = get_client()
-    network_manager = NetworkManager(client)
+    network_manager = get_network_manager(client)
     return await network_manager.create_vlan(
         vlan_id, vlan_name, bridge, gateway, dhcp_range, node, dry_run
     )
@@ -3292,7 +3351,7 @@ async def proxmox_configure_firewall(
 ) -> Dict[str, Any]:
     """Configure VM-level firewall rules"""
     client = get_client()
-    network_manager = NetworkManager(client)
+    network_manager = get_network_manager(client)
     return await network_manager.configure_firewall(
         vmid, rules, policy, log_level, node, dry_run
     )
@@ -3308,7 +3367,7 @@ async def proxmox_deploy_vpn_server(
 ) -> Dict[str, Any]:
     """Deploy VPN server for secure remote access"""
     client = get_client()
-    network_manager = NetworkManager(client)
+    network_manager = get_network_manager(client)
     return await network_manager.deploy_vpn_server(
         vpn_type, client_count, subnet, node, dry_run
     )
@@ -3327,7 +3386,7 @@ async def proxmox_setup_monitoring(
 ) -> Dict[str, Any]:
     """Deploy comprehensive monitoring stack"""
     client = get_client()
-    monitoring_manager = MonitoringManager(client)
+    monitoring_manager = get_monitoring_manager(client)
     return await monitoring_manager.setup_monitoring(
         stack_type, retention_days, alert_rules, webhook_url, dry_run
     )
@@ -3343,7 +3402,7 @@ async def proxmox_setup_logging(
 ) -> Dict[str, Any]:
     """Setup centralized logging for all VMs"""
     client = get_client()
-    monitoring_manager = MonitoringManager(client)
+    monitoring_manager = get_monitoring_manager(client)
     return await monitoring_manager.setup_logging(
         log_stack, centralized, retention_policy, indices, dry_run
     )
@@ -3358,7 +3417,7 @@ async def proxmox_performance_analysis(
 ) -> Dict[str, Any]:
     """Analyze VM and host performance with optimization suggestions"""
     client = get_client()
-    monitoring_manager = MonitoringManager(client)
+    monitoring_manager = get_monitoring_manager(client)
     if metrics is None:
         metrics = ["cpu", "memory", "disk", "network"]
     return await monitoring_manager.performance_analysis(
@@ -3380,7 +3439,7 @@ async def proxmox_setup_replication(
 ) -> Dict[str, Any]:
     """Setup storage replication between nodes"""
     client = get_client()
-    storage_manager = AdvancedStorageManager(client)
+    storage_manager = get_storage_manager(client)
     return await storage_manager.setup_replication(
         source_storage, target_node, target_storage, schedule, compression, dry_run
     )
@@ -3397,7 +3456,7 @@ async def proxmox_snapshot_policy(
 ) -> Dict[str, Any]:
     """Create automated snapshot policies with lifecycle management"""
     client = get_client()
-    storage_manager = AdvancedStorageManager(client)
+    storage_manager = get_storage_manager(client)
     return await storage_manager.snapshot_policy(
         vmid, policy, auto_cleanup, compression, node, dry_run
     )
@@ -3415,7 +3474,7 @@ async def proxmox_migrate_storage(
 ) -> Dict[str, Any]:
     """Migrate VM storage between different storage backends"""
     client = get_client()
-    storage_manager = AdvancedStorageManager(client)
+    storage_manager = get_storage_manager(client)
     return await storage_manager.migrate_storage(
         vmid, source_storage, target_storage, online, preserve_source, node, dry_run
     )
@@ -3435,7 +3494,7 @@ async def proxmox_ai_scaling(
 ) -> Dict[str, Any]:
     """AI-powered predictive scaling based on usage patterns"""
     client = get_client()
-    ai_manager = AIOptimizationManager(client)
+    ai_manager = get_ai_manager(client)
     return await ai_manager.ai_scaling(
         vmid, enable_prediction, metrics_window, scaling_policy, node, dry_run
     )
@@ -3451,7 +3510,7 @@ async def proxmox_anomaly_detection(
 ) -> Dict[str, Any]:
     """AI-powered anomaly detection for proactive issue resolution"""
     client = get_client()
-    ai_manager = AIOptimizationManager(client)
+    ai_manager = get_ai_manager(client)
     return await ai_manager.anomaly_detection(
         detection_type, sensitivity, alert_threshold, auto_remediation, dry_run
     )
@@ -3467,7 +3526,7 @@ async def proxmox_auto_optimize(
 ) -> Dict[str, Any]:
     """Automatically optimize VM configurations based on usage patterns"""
     client = get_client()
-    ai_manager = AIOptimizationManager(client)
+    ai_manager = get_ai_manager(client)
     return await ai_manager.auto_optimize(
         optimization_scope,
         learning_period,
@@ -3490,7 +3549,7 @@ async def proxmox_setup_webhooks(
 ) -> Dict[str, Any]:
     """Setup webhooks for event-driven automation"""
     client = get_client()
-    integration_manager = IntegrationManager(client)
+    integration_manager = get_integration_manager(client)
     if events is None:
         events = ["vm_start", "vm_stop", "backup_complete"]
     return await integration_manager.setup_webhooks(
@@ -3511,7 +3570,7 @@ async def proxmox_api_gateway(
 ) -> Dict[str, Any]:
     """Deploy API gateway for enhanced API management"""
     client = get_client()
-    integration_manager = IntegrationManager(client)
+    integration_manager = get_integration_manager(client)
     if auth_providers is None:
         auth_providers = ["jwt"]
     return await integration_manager.api_gateway(
@@ -3536,7 +3595,7 @@ async def proxmox_integrate_service(
 ) -> Dict[str, Any]:
     """Integrate with external services for notifications and automation"""
     client = get_client()
-    integration_manager = IntegrationManager(client)
+    integration_manager = get_integration_manager(client)
     if notification_types is None:
         notification_types = ["alerts", "deployments"]
     return await integration_manager.integrate_service(
@@ -3832,7 +3891,51 @@ async def proxmox_notes_template(
     }
 
 
-def main() -> None:
+def main(argv: Optional[List[str]] = None) -> None:
+    parser = argparse.ArgumentParser(description="Run the Proxmox MCP server")
+    parser.add_argument(
+        "--profile",
+        action="append",
+        default=None,
+        help=(
+            "Enable one or more optional tool profiles. "
+            "Repeat the flag or pass a comma-separated list. "
+            "Default is core."
+        ),
+    )
+    parser.add_argument(
+        "--list-profiles",
+        action="store_true",
+        help="Print available profiles and exit",
+    )
+    parser.add_argument(
+        "--list-tools",
+        action="store_true",
+        help="Print enabled tool names for the selected profiles and exit",
+    )
+    args = parser.parse_args(argv)
+
+    if args.list_profiles:
+        for profile_name in sorted(PROFILE_DESCRIPTIONS):
+            print(f"{profile_name}: {PROFILE_DESCRIPTIONS[profile_name]}")
+        return
+
+    try:
+        active_profiles = resolve_profiles(args.profile)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    enabled_tool_names = apply_profiles_to_server(server, active_profiles)
+
+    if args.list_tools:
+        for tool_name in sorted(enabled_tool_names):
+            print(tool_name)
+        return
+
+    print(
+        f"Starting proxmox-mcp with profiles: {', '.join(active_profiles)}",
+        file=sys.stderr,
+    )
     server.run("stdio")
 
 

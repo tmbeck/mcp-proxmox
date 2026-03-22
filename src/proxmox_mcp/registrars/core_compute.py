@@ -262,14 +262,21 @@ def register_core_compute_tools(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
         node: Optional[str] = None,
+        overrule_shutdown: bool = False,
         hard: bool = False,
         timeout: Optional[int] = None,
         wait: bool = False,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
+        """Immediately stop a VM; `overrule_shutdown=true` cancels an in-progress shutdown task first. `hard` is a deprecated alias."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        upid = client.stop_vm(vm_node, vm_vmid, force=hard, timeout=timeout)
+        upid = client.stop_vm(
+            vm_node,
+            vm_vmid,
+            overrule_shutdown=overrule_shutdown or hard,
+            timeout=timeout,
+        )
         result: Dict[str, Any] = {"upid": upid}
         if wait:
             result["status"] = client.wait_task(

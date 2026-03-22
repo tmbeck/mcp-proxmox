@@ -561,10 +561,17 @@ class ProxmoxClient:
         return self._api.nodes(node).qemu(vmid).status.start.post()
 
     def stop_vm(
-        self, node: str, vmid: int, force: bool = False, timeout: Optional[int] = None
+        self,
+        node: str,
+        vmid: int,
+        overrule_shutdown: bool = False,
+        timeout: Optional[int] = None,
+        force: Optional[bool] = None,
     ) -> str:
         params: Dict[str, Any] = {}
-        if force:
+        if force is not None:
+            overrule_shutdown = overrule_shutdown or force
+        if overrule_shutdown:
             params["overrule-shutdown"] = 1
         if timeout is not None:
             params["timeout"] = int(timeout)

@@ -352,7 +352,7 @@ Format below per tool:
   - Example: `{ "name": "web01", "purge": true }`
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-start-vm` / `proxmox-stop-vm` / `proxmox-reboot-vm` / `proxmox-shutdown-vm`
-  - Manage power state; `shutdown` requests a clean guest shutdown, while `stop` is immediate and `hard=true` overrules an in-progress shutdown task first
+  - Manage power state; `shutdown` requests a clean guest shutdown, while `stop` is immediate and `overrule_shutdown=true` cancels an in-progress shutdown task first (`hard` remains as a deprecated alias)
   - Example: `{ "name": "web01", "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-migrate-vm`
@@ -447,6 +447,9 @@ uv run mypy src
 Notes:
 - `uv run pytest` runs the stable automated suite.
 - Stable automated tests live under `tests/`.
+- `uv run proxmox-mcp-release-patch` bumps the next patch version, refreshes `uv.lock`, runs the automated tests, creates a release commit, and tags it.
+- The release helper requires a clean git worktree and only expects version-file changes in `pyproject.toml`, `src/proxmox_mcp/__init__.py`, and `uv.lock`.
+- Successful release helper runs finish by creating `chore: release vX.Y.Z` and annotated tag `vX.Y.Z`; push them with `git push origin main --tags` when you are ready to publish.
 - Manual/integration-oriented scripts such as `scripts/test_resources.py` and `scripts/test_multi_cluster_server.py` are intentionally excluded from pytest collection; run them directly when you want live-environment checks.
 - Legacy/one-off maintenance helpers now live under `scripts/dev/` and `scripts/legacy/` instead of the repo root.
 

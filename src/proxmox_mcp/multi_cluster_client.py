@@ -19,26 +19,28 @@ logger = logging.getLogger(__name__)
 class MultiClusterProxmoxClient:
     """
     Wrapper that routes operations to the appropriate cluster's ProxmoxClient.
-    
+
     Provides transparent API compatibility - can be used as a drop-in replacement
     for single ProxmoxClient while supporting multi-cluster operations.
-    
+
     Cluster selection priority:
     1. Explicit cluster parameter
     2. Resource name pattern matching
     3. Default cluster
     """
-    
+
     def __init__(self, registry: Optional[ClusterRegistry] = None):
         """
         Initialize multi-cluster client.
-        
+
         Args:
             registry: ClusterRegistry instance. If None, uses global registry.
         """
         self._registry = registry or get_cluster_registry()
-        logger.info(f"Initialized MultiClusterProxmoxClient with {len(self._registry.list_clusters())} cluster(s)")
-    
+        logger.info(
+            f"Initialized MultiClusterProxmoxClient with {len(self._registry.list_clusters())} cluster(s)"
+        )
+
     def _get_client(
         self,
         cluster: Optional[str] = None,
@@ -46,11 +48,11 @@ class MultiClusterProxmoxClient:
     ) -> ProxmoxClient:
         """
         Get the appropriate ProxmoxClient for the operation.
-        
+
         Args:
             cluster: Explicit cluster name
             resource_name: Name of resource for pattern matching
-            
+
         Returns:
             ProxmoxClient instance
         """
@@ -59,19 +61,21 @@ class MultiClusterProxmoxClient:
             resource_name=resource_name,
         )
         return self._registry.get_client(selected_cluster)
-    
+
     # -------- Discovery Methods --------
-    
+
     def list_nodes(self, cluster: Optional[str] = None) -> List[Dict[str, Any]]:
         """List nodes from cluster."""
         client = self._get_client(cluster=cluster)
         return client.list_nodes()
-    
-    def get_node_status(self, node: str, cluster: Optional[str] = None) -> Dict[str, Any]:
+
+    def get_node_status(
+        self, node: str, cluster: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Get node status."""
         client = self._get_client(cluster=cluster)
         return client.get_node_status(node)
-    
+
     def list_vms(
         self,
         node: Optional[str] = None,
@@ -82,7 +86,7 @@ class MultiClusterProxmoxClient:
         """List VMs from cluster."""
         client = self._get_client(cluster=cluster)
         return client.list_vms(node=node, status=status, search=search)
-    
+
     def list_lxc(
         self,
         node: Optional[str] = None,
@@ -93,7 +97,7 @@ class MultiClusterProxmoxClient:
         """List LXC containers from cluster."""
         client = self._get_client(cluster=cluster)
         return client.list_lxc(node=node, status=status, search=search)
-    
+
     def resolve_vm(
         self,
         vmid: Optional[int] = None,
@@ -104,7 +108,7 @@ class MultiClusterProxmoxClient:
         """Resolve VM to (vmid, node, resource)."""
         client = self._get_client(cluster=cluster, resource_name=name)
         return client.resolve_vm(vmid=vmid, name=name, node=node)
-    
+
     def resolve_lxc(
         self,
         vmid: Optional[int] = None,
@@ -115,7 +119,7 @@ class MultiClusterProxmoxClient:
         """Resolve LXC container to (vmid, node, resource)."""
         client = self._get_client(cluster=cluster, resource_name=name)
         return client.resolve_lxc(vmid=vmid, name=name, node=node)
-    
+
     def vm_config(
         self,
         node: str,
@@ -125,7 +129,7 @@ class MultiClusterProxmoxClient:
         """Get VM configuration."""
         client = self._get_client(cluster=cluster)
         return client.vm_config(node, vmid)
-    
+
     def lxc_config(
         self,
         node: str,
@@ -135,12 +139,12 @@ class MultiClusterProxmoxClient:
         """Get LXC configuration."""
         client = self._get_client(cluster=cluster)
         return client.lxc_config(node, vmid)
-    
+
     def list_storage(self, cluster: Optional[str] = None) -> List[Dict[str, Any]]:
         """List storage from cluster."""
         client = self._get_client(cluster=cluster)
         return client.list_storage()
-    
+
     def storage_status(
         self,
         node: str,
@@ -150,7 +154,7 @@ class MultiClusterProxmoxClient:
         """Get storage status."""
         client = self._get_client(cluster=cluster)
         return client.storage_status(node, storage)
-    
+
     def storage_content(
         self,
         node: str,
@@ -160,7 +164,7 @@ class MultiClusterProxmoxClient:
         """Get storage content."""
         client = self._get_client(cluster=cluster)
         return client.storage_content(node, storage)
-    
+
     def list_bridges(
         self,
         node: str,
@@ -169,7 +173,7 @@ class MultiClusterProxmoxClient:
         """List bridges from node."""
         client = self._get_client(cluster=cluster)
         return client.list_bridges(node)
-    
+
     def list_tasks(
         self,
         node: Optional[str] = None,
@@ -180,7 +184,7 @@ class MultiClusterProxmoxClient:
         """List tasks from cluster."""
         client = self._get_client(cluster=cluster)
         return client.list_tasks(node=node, user=user, limit=limit)
-    
+
     def task_status(
         self,
         upid: str,
@@ -190,9 +194,9 @@ class MultiClusterProxmoxClient:
         """Get task status."""
         client = self._get_client(cluster=cluster)
         return client.task_status(upid, node=node)
-    
+
     # -------- VM Lifecycle Methods --------
-    
+
     def clone_vm(
         self,
         source_node: str,
@@ -215,7 +219,7 @@ class MultiClusterProxmoxClient:
             full=full,
             storage=storage,
         )
-    
+
     def create_vm(
         self,
         node: str,
@@ -248,7 +252,7 @@ class MultiClusterProxmoxClient:
             agent=agent,
             ostype=ostype,
         )
-    
+
     def delete_vm(
         self,
         node: str,
@@ -259,7 +263,7 @@ class MultiClusterProxmoxClient:
         """Delete VM."""
         client = self._get_client(cluster=cluster)
         return client.delete_vm(node, vmid, purge=purge)
-    
+
     def start_vm(
         self,
         node: str,
@@ -269,19 +273,26 @@ class MultiClusterProxmoxClient:
         """Start VM."""
         client = self._get_client(cluster=cluster)
         return client.start_vm(node, vmid)
-    
+
     def stop_vm(
         self,
         node: str,
         vmid: int,
-        force: bool = False,
+        overrule_shutdown: bool = False,
         timeout: Optional[int] = None,
         cluster: Optional[str] = None,
+        force: Optional[bool] = None,
     ) -> str:
         """Stop VM."""
         client = self._get_client(cluster=cluster)
-        return client.stop_vm(node, vmid, force=force, timeout=timeout)
-    
+        return client.stop_vm(
+            node,
+            vmid,
+            overrule_shutdown=overrule_shutdown,
+            timeout=timeout,
+            force=force,
+        )
+
     def reboot_vm(
         self,
         node: str,
@@ -291,7 +302,7 @@ class MultiClusterProxmoxClient:
         """Reboot VM."""
         client = self._get_client(cluster=cluster)
         return client.reboot_vm(node, vmid)
-    
+
     def shutdown_vm(
         self,
         node: str,
@@ -302,7 +313,7 @@ class MultiClusterProxmoxClient:
         """Shutdown VM."""
         client = self._get_client(cluster=cluster)
         return client.shutdown_vm(node, vmid, timeout=timeout)
-    
+
     def migrate_vm(
         self,
         node: str,
@@ -314,7 +325,7 @@ class MultiClusterProxmoxClient:
         """Migrate VM."""
         client = self._get_client(cluster=cluster)
         return client.migrate_vm(node, vmid, target_node, online=online)
-    
+
     def resize_vm_disk(
         self,
         node: str,
@@ -326,7 +337,7 @@ class MultiClusterProxmoxClient:
         """Resize VM disk."""
         client = self._get_client(cluster=cluster)
         return client.resize_vm_disk(node, vmid, disk, size_gb)
-    
+
     def configure_vm(
         self,
         node: str,
@@ -337,9 +348,9 @@ class MultiClusterProxmoxClient:
         """Configure VM."""
         client = self._get_client(cluster=cluster)
         return client.configure_vm(node, vmid, params)
-    
+
     # -------- LXC Lifecycle Methods --------
-    
+
     def create_lxc(
         self,
         node: str,
@@ -368,7 +379,7 @@ class MultiClusterProxmoxClient:
             bridge=bridge,
             net_ip=net_ip,
         )
-    
+
     def delete_lxc(
         self,
         node: str,
@@ -379,7 +390,7 @@ class MultiClusterProxmoxClient:
         """Delete LXC container."""
         client = self._get_client(cluster=cluster)
         return client.delete_lxc(node, vmid, purge=purge)
-    
+
     def start_lxc(
         self,
         node: str,
@@ -389,7 +400,7 @@ class MultiClusterProxmoxClient:
         """Start LXC container."""
         client = self._get_client(cluster=cluster)
         return client.start_lxc(node, vmid)
-    
+
     def stop_lxc(
         self,
         node: str,
@@ -400,7 +411,7 @@ class MultiClusterProxmoxClient:
         """Stop LXC container."""
         client = self._get_client(cluster=cluster)
         return client.stop_lxc(node, vmid, timeout=timeout)
-    
+
     def configure_lxc(
         self,
         node: str,
@@ -411,28 +422,28 @@ class MultiClusterProxmoxClient:
         """Configure LXC container."""
         client = self._get_client(cluster=cluster)
         return client.configure_lxc(node, vmid, params)
-    
+
     # -------- Cluster-Specific Methods --------
-    
+
     def get_registry(self) -> ClusterRegistry:
         """Get the cluster registry."""
         return self._registry
-    
+
     def list_all_clusters(self) -> List[str]:
         """List all available clusters."""
         return self._registry.list_clusters()
-    
+
     def get_cluster_info(self, cluster_name: Optional[str] = None) -> Dict:
         """Get information about a cluster."""
         return self._registry.get_cluster_info(cluster_name)
-    
+
     def list_all_clusters_info(self) -> List[Dict]:
         """Get information about all clusters."""
         return self._registry.list_all_clusters_info()
-    
+
     def validate_all_clusters(self) -> Dict[str, tuple]:
         """Validate connectivity to all clusters."""
         return self._registry.validate_all_clusters()
-    
+
     def __repr__(self) -> str:
         return f"MultiClusterProxmoxClient({self._registry})"

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 
 from proxmox_mcp.client import ProxmoxClient
+from proxmox_mcp.server import server
 
 
 class _FakePostCall:
@@ -61,21 +63,41 @@ def _build_client() -> ProxmoxClient:
     return client
 
 
-def test_stop_vm_without_hard_uses_plain_stop() -> None:
+def test_stop_vm_without_overrule_uses_plain_stop() -> None:
     client = _build_client()
 
     result = client.stop_vm("pve1", 123)
 
-    stop_call = client._api.nodes("pve1").qemu(123).status.stop.post
+    stop_call = cast(Any, client._api.nodes("pve1").qemu(123).status.stop.post)
     assert result == "UPID:task"
     assert stop_call.calls == [{}]
 
 
-def test_stop_vm_with_hard_overrules_existing_shutdown() -> None:
+def test_stop_vm_with_overrule_shutdown_uses_stop_override() -> None:
+    client = _build_client()
+
+    result = client.stop_vm("pve1", 123, overrule_shutdown=True, timeout=45)
+
+    stop_call = cast(Any, client._api.nodes("pve1").qemu(123).status.stop.post)
+    assert result == "UPID:task"
+    assert stop_call.calls == [{"overrule-shutdown": 1, "timeout": 45}]
+
+
+def test_stop_vm_force_alias_stays_backward_compatible() -> None:
     client = _build_client()
 
     result = client.stop_vm("pve1", 123, force=True, timeout=45)
 
-    stop_call = client._api.nodes("pve1").qemu(123).status.stop.post
+    stop_call = cast(Any, client._api.nodes("pve1").qemu(123).status.stop.post)
     assert result == "UPID:task"
     assert stop_call.calls == [{"overrule-shutdown": 1, "timeout": 45}]
+
+
+def test_stop_vm_tool_prefers_overrule_shutdown_name() -> None:
+    tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+
+    stop_tool = tools["proxmox-stop-vm"]
+    properties = stop_tool.inputSchema["properties"]
+
+    assert "overrule_shutdown" in properties
+    assert "hard" in properties

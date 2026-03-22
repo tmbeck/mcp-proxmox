@@ -14,7 +14,10 @@ Target workflow:
 6. verify the guest sees the new disk
 7. detach the disk non-destructively
 8. optionally delete the detached disk volume
-9. destroy the disposable VM
+9. create and delete a disposable snapshot
+10. stop the VM immediately and start it again
+11. shut it down cleanly
+12. destroy the disposable VM
 
 ## Guardrails
 
@@ -37,6 +40,25 @@ Target workflow:
 - For full in-guest install/test steps, the template must support reliable external SSH access as `ubuntu`.
 - The template should already have your SSH public key installed, or the clone workflow should inject it via cloud-init.
 - The external test script should fetch the guest IP through this project by reading the address reported to Proxmox via QEMU guest agent.
+
+## Opt-In Live Smoke Command
+
+Run the guarded smoke workflow with automatic cleanup of disposable resources on failure:
+
+```bash
+uv run python scripts/run_disposable_vm_test.py \
+  --yes-delete-disk \
+  --yes-delete-vm \
+  --cleanup-on-failure
+```
+
+Defaults now cover:
+
+- clone/start/guest readiness
+- disk add/detach/delete-volume cycle
+- snapshot create/delete
+- immediate stop plus restart
+- graceful shutdown and final VM deletion
 
 ## External SSH Reliability Notes
 
@@ -118,8 +140,10 @@ If your goal is product validation rather than a minimal MCP smoke test, use thi
 9. Attach a new `40 GB` data disk.
 10. Delete the detached disk.
 11. Verify the guest sees `4` attached data disks.
-12. Shut off the VM.
-13. Delete the disposable VM and its owned test disks.
+12. Create and delete a disposable snapshot.
+13. Stop the VM immediately, start it again, and confirm the guest still sees the expected disks.
+14. Shut off the VM cleanly.
+15. Delete the disposable VM and its owned test disks.
 
 Important clarification:
 
@@ -299,7 +323,89 @@ Tool: `proxmox-vm-disk-remove`
 Expected result:
 - unused test disk is deleted from storage
 
-### 11. Destroy the disposable VM
+### 11. Create and delete a disposable snapshot
+
+This snapshot must be created on the disposable VM only.
+
+Example create:
+
+```json
+{
+  "vmid": 8100,
+  "snapname": "mcp-smoke-snap-8100-<timestamp>",
+  "description": "Disposable live smoke snapshot"
+}
+```
+
+Tool: `proxmox-create-snapshot`
+
+Expected result:
+- snapshot appears in `proxmox-list-snapshots`
+
+Example delete:
+
+```json
+{
+  "vmid": 8100,
+  "snapname": "mcp-smoke-snap-8100-<timestamp>"
+}
+```
+
+Tool: `proxmox-delete-snapshot`
+
+Expected result:
+- disposable snapshot no longer appears in `proxmox-list-snapshots`
+
+### 12. Stop the VM immediately and start it again
+
+Example stop:
+
+```json
+{
+  "vmid": 8100,
+  "overrule_shutdown": true,
+  "wait": true
+}
+```
+
+Tool: `proxmox-stop-vm`
+
+Expected result:
+- VM power state becomes `stopped`
+
+Example start:
+
+```json
+{
+  "vmid": 8100,
+  "wait": true
+}
+```
+
+Tool: `proxmox-start-vm`
+
+Expected result:
+- VM becomes reachable again over external SSH
+- guest still shows the expected disk layout
+
+### 13. Shut down the disposable VM cleanly
+
+Example:
+
+```json
+{
+  "vmid": 8100,
+  "wait": true,
+  "timeout": 120
+}
+```
+
+Tool: `proxmox-shutdown-vm`
+
+Expected result:
+- VM power state becomes `stopped`
+
+### 14. Destroy the disposable VM
 
 This permanently deletes the disposable VM and any purged resources.
 
@@ -345,6 +451,10 @@ This recipe has already been proven live in two stages:
   - guest shell access
   - guest-visible disk add
   - guest-visible non-destructive detach
+  - guest-visible replacement disk add/delete-volume
+  - snapshot create/delete
+  - immediate stop/start
+  - graceful shutdown
   - cleanup
 
 The remaining optional step is an actual product-specific install/test command payload for your software.

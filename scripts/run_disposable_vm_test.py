@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import shlex
 import shutil
 import socket
 import subprocess
@@ -33,10 +31,12 @@ class TestResources:
     vmid: Optional[int] = None
     vm_name: Optional[str] = None
     vm_node: Optional[str] = None
+    guest_ip: Optional[str] = None
     created_disk_devices: list[str] = field(default_factory=list)
     created_disk_configs: dict[str, str] = field(default_factory=dict)
     detached_unused_device: Optional[str] = None
     detached_unused_config: Optional[str] = None
+    snapshot_names: list[str] = field(default_factory=list)
     temp_dir: Optional[Path] = None
     private_key_path: Optional[Path] = None
     public_key_path: Optional[Path] = None
@@ -60,12 +60,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--install-command")
     parser.add_argument("--test-command")
     parser.add_argument("--pre-detach-command")
+    parser.add_argument("--snapshot-name-prefix", default="mcp-smoke-snap")
     parser.add_argument("--ssh-timeout", type=int, default=300)
     parser.add_argument("--task-timeout", type=int, default=1800)
     parser.add_argument("--poll-interval", type=float, default=3.0)
     parser.add_argument("--yes-delete-disk", action="store_true")
     parser.add_argument("--yes-delete-vm", action="store_true")
+    parser.add_argument("--cleanup-on-failure", action="store_true")
     parser.add_argument("--keep-vm-on-success", action="store_true")
+    parser.add_argument("--skip-snapshot-cycle", action="store_true")
+    parser.add_argument("--skip-stop-cycle", action="store_true")
     parser.add_argument("--skip-cloud-init-wait", action="store_true")
     return parser.parse_args()
 
@@ -405,6 +409,105 @@ def disk_volume_identity(config_value: str) -> str:
     return config_value.split(",", 1)[0].strip()
 
 
+def snapshot_entry_names(snapshots: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(snapshot.get("name") or snapshot.get("snapname") or "")
+        for snapshot in snapshots
+        if snapshot.get("name") or snapshot.get("snapname")
+    }
+
+
+def require_snapshot_state(
+    client: ProxmoxClient,
+    *,
+    node: str,
+    vmid: int,
+    snapshot_name: str,
+    should_exist: bool,
+) -> set[str]:
+    names = snapshot_entry_names(client.list_snapshots(node, vmid))
+    if should_exist and snapshot_name not in names:
+        raise RuntimeError(
+            f"Snapshot {snapshot_name!r} not found on VM {vmid}; visible snapshots: {sorted(names)}"
+        )
+    if not should_exist and snapshot_name in names:
+        raise RuntimeError(f"Snapshot {snapshot_name!r} still exists on VM {vmid}")
+    return names
+
+
+def current_vm_status(client: ProxmoxClient, vmid: int) -> str:
+    _, _, vm = client.resolve_vm(vmid=vmid)
+    return str(vm.get("status") or "")
+
+
+def wait_for_vm_status(
+    client: ProxmoxClient,
+    *,
+    vmid: int,
+    expected_status: str,
+    timeout: int,
+    poll_interval: float,
+) -> str:
+    deadline = time.time() + timeout
+    last_status: Optional[str] = None
+    while time.time() < deadline:
+        status = current_vm_status(client, vmid)
+        last_status = status
+        if status == expected_status:
+            return status
+        time.sleep(poll_interval)
+
+    raise RuntimeError(
+        f"VM {vmid} did not reach status={expected_status!r} within {timeout}s; last status={last_status!r}"
+    )
+
+
+def best_effort_cleanup(
+    client: ProxmoxClient,
+    resources: TestResources,
+    *,
+    name_prefix: str,
+    timeout: int,
+    poll_interval: float,
+) -> None:
+    if resources.vm_deleted or resources.vmid is None:
+        return
+
+    try:
+        vmid, node, vm = client.resolve_vm(vmid=resources.vmid)
+    except Exception:
+        return
+
+    ensure_disposable_vm(vm, vmid, name_prefix)
+    status = str(vm.get("status") or "")
+    if status == "running":
+        stop_upid = client.stop_vm(
+            node,
+            vmid,
+            overrule_shutdown=True,
+            timeout=min(timeout, 120),
+        )
+        stop_status = wait_for_task_if_present(
+            client,
+            stop_upid,
+            node=node,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        log_step("cleanup-stopped", upid=stop_upid, status=stop_status)
+
+    delete_upid = client.delete_vm(node, vmid, purge=True)
+    delete_status = wait_for_task_if_present(
+        client,
+        delete_upid,
+        node=node,
+        timeout=timeout,
+        poll_interval=poll_interval,
+    )
+    resources.vm_deleted = True
+    log_step("cleanup-vm-deleted", upid=delete_upid, status=delete_status)
+
+
 def main() -> int:
     args = parse_args()
     load_dotenv(PROJECT_ROOT / ".env")
@@ -531,6 +634,7 @@ def main() -> int:
             timeout=args.ssh_timeout,
             poll_interval=5.0,
         )
+        resources.guest_ip = ip_address
         wait_for_ssh(ip_address, args.ssh_timeout)
         log_step("guest-ip", ip_address=ip_address)
 
@@ -760,16 +864,74 @@ def main() -> int:
             description="post-disk-cycle-test-command",
         )
 
-        stop_upid = client.shutdown_vm(clone_vm_node, clone_vm_vmid, timeout=120)
-        stop_status = wait_for_task_if_present(
-            client,
-            stop_upid,
-            node=clone_vm_node,
-            timeout=600,
-            poll_interval=args.poll_interval,
-        )
-        if stop_status is None:
-            stop_upid = client.stop_vm(clone_vm_node, clone_vm_vmid, timeout=120)
+        if not args.skip_snapshot_cycle:
+            snapshot_name = (
+                f"{args.snapshot_name_prefix}-{clone_vm_vmid}-{int(time.time())}"
+            )
+            snapshot_upid = client.create_snapshot(
+                clone_vm_node,
+                clone_vm_vmid,
+                name=snapshot_name,
+                description="Disposable live smoke snapshot",
+                vmstate=False,
+            )
+            snapshot_status = wait_for_task_if_present(
+                client,
+                snapshot_upid,
+                node=clone_vm_node,
+                timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+            )
+            resources.snapshot_names.append(snapshot_name)
+            snapshot_names = require_snapshot_state(
+                client,
+                node=clone_vm_node,
+                vmid=clone_vm_vmid,
+                snapshot_name=snapshot_name,
+                should_exist=True,
+            )
+            log_step(
+                "snapshot-created",
+                snapshot_name=snapshot_name,
+                upid=snapshot_upid,
+                status=snapshot_status,
+                snapshots=sorted(snapshot_names),
+            )
+
+            delete_snapshot_upid = client.delete_snapshot(
+                clone_vm_node,
+                clone_vm_vmid,
+                snapshot_name,
+            )
+            delete_snapshot_status = wait_for_task_if_present(
+                client,
+                delete_snapshot_upid,
+                node=clone_vm_node,
+                timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+            )
+            snapshot_names = require_snapshot_state(
+                client,
+                node=clone_vm_node,
+                vmid=clone_vm_vmid,
+                snapshot_name=snapshot_name,
+                should_exist=False,
+            )
+            log_step(
+                "snapshot-deleted",
+                snapshot_name=snapshot_name,
+                upid=delete_snapshot_upid,
+                status=delete_snapshot_status,
+                snapshots=sorted(snapshot_names),
+            )
+
+        if not args.skip_stop_cycle:
+            stop_upid = client.stop_vm(
+                clone_vm_node,
+                clone_vm_vmid,
+                overrule_shutdown=True,
+                timeout=120,
+            )
             stop_status = wait_for_task_if_present(
                 client,
                 stop_upid,
@@ -777,7 +939,128 @@ def main() -> int:
                 timeout=600,
                 poll_interval=args.poll_interval,
             )
-        log_step("stopped", upid=stop_upid, status=stop_status)
+            post_stop_vm_status = wait_for_vm_status(
+                client,
+                vmid=clone_vm_vmid,
+                expected_status="stopped",
+                timeout=60,
+                poll_interval=args.poll_interval,
+            )
+            log_step(
+                "force-stopped",
+                upid=stop_upid,
+                status=stop_status,
+                vm_status=post_stop_vm_status,
+            )
+
+            restart_upid = client.start_vm(clone_vm_node, clone_vm_vmid)
+            restart_status = client.wait_task(
+                restart_upid,
+                node=clone_vm_node,
+                timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+            )
+            log_step("restarted-after-stop", upid=restart_upid, status=restart_status)
+
+            ip_address = client.wait_for_vm_ip(
+                clone_vm_node,
+                clone_vm_vmid,
+                timeout=args.ssh_timeout,
+                poll_interval=5.0,
+            )
+            resources.guest_ip = ip_address
+            wait_for_ssh(ip_address, args.ssh_timeout)
+            log_step("guest-ip-after-stop-cycle", ip_address=ip_address)
+
+            restarted_ready = wait_for_ssh_command(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command="echo restart-ready && uname -a",
+                timeout=args.ssh_timeout,
+                description="post-stop-cycle guest readiness",
+            )
+            log_step(
+                "post-stop-cycle readiness",
+                stdout=restarted_ready.stdout.strip()[:500],
+                stderr=restarted_ready.stderr.strip()[:200],
+            )
+            restarted_lsblk = ensure_ssh_ok(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command="lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT",
+                timeout=args.ssh_timeout,
+                description="post-stop-cycle lsblk",
+            )
+            restarted_count, restarted_disks = parse_lsblk_json(restarted_lsblk.stdout)
+            if restarted_count != expected_final_count:
+                raise RuntimeError(
+                    f"Expected {expected_final_count} guest disks after stop/start cycle, got {restarted_count}: {restarted_disks}"
+                )
+            log_step(
+                "after-stop-cycle-verify",
+                disk_count=restarted_count,
+                disks=restarted_disks,
+            )
+            maybe_run_product_command(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=args.test_command,
+                timeout=args.ssh_timeout,
+                description="post-stop-cycle-test-command",
+            )
+
+        shutdown_upid = client.shutdown_vm(clone_vm_node, clone_vm_vmid, timeout=120)
+        shutdown_status = wait_for_task_if_present(
+            client,
+            shutdown_upid,
+            node=clone_vm_node,
+            timeout=600,
+            poll_interval=args.poll_interval,
+        )
+        try:
+            final_vm_status = wait_for_vm_status(
+                client,
+                vmid=clone_vm_vmid,
+                expected_status="stopped",
+                timeout=60,
+                poll_interval=args.poll_interval,
+            )
+        except RuntimeError:
+            final_stop_upid = client.stop_vm(
+                clone_vm_node,
+                clone_vm_vmid,
+                overrule_shutdown=True,
+                timeout=120,
+            )
+            final_stop_status = wait_for_task_if_present(
+                client,
+                final_stop_upid,
+                node=clone_vm_node,
+                timeout=600,
+                poll_interval=args.poll_interval,
+            )
+            final_vm_status = wait_for_vm_status(
+                client,
+                vmid=clone_vm_vmid,
+                expected_status="stopped",
+                timeout=60,
+                poll_interval=args.poll_interval,
+            )
+            log_step(
+                "shutdown-fallback-stop",
+                upid=final_stop_upid,
+                status=final_stop_status,
+                vm_status=final_vm_status,
+            )
+        log_step(
+            "shutdown-complete",
+            upid=shutdown_upid,
+            status=shutdown_status,
+            vm_status=final_vm_status,
+        )
 
         if args.keep_vm_on_success:
             log_step("kept-vm-for-inspection", vmid=clone_vm_vmid, name=vm_name)
@@ -818,6 +1101,22 @@ def main() -> int:
         return 0
     except Exception as exc:
         log_step("error", error=str(exc), vmid=resources.vmid, name=resources.vm_name)
+        if args.cleanup_on_failure:
+            try:
+                best_effort_cleanup(
+                    client,
+                    resources,
+                    name_prefix=args.name_prefix,
+                    timeout=args.task_timeout,
+                    poll_interval=args.poll_interval,
+                )
+            except Exception as cleanup_exc:
+                log_step(
+                    "cleanup-error",
+                    error=str(cleanup_exc),
+                    vmid=resources.vmid,
+                    name=resources.vm_name,
+                )
         if resources.temp_dir and not resources.vm_deleted:
             log_step(
                 "preserved-temp-keys",

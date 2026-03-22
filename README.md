@@ -447,6 +447,7 @@ uv run mypy src
 Notes:
 - `uv run pytest` runs the stable automated suite.
 - Stable automated tests live under `tests/`.
+- `uv run python scripts/run_disposable_vm_test.py --yes-delete-disk --yes-delete-vm --cleanup-on-failure` runs the opt-in live smoke workflow against a disposable clone, including disk, snapshot, stop/start, shutdown, and delete coverage.
 - `uv run proxmox-mcp-release-patch` bumps the next patch version, refreshes `uv.lock`, runs the automated tests, creates a release commit, and tags it.
 - The release helper requires a clean git worktree and only expects version-file changes in `pyproject.toml`, `src/proxmox_mcp/__init__.py`, and `uv.lock`.
 - Successful release helper runs finish by creating `chore: release vX.Y.Z` and annotated tag `vX.Y.Z`; push them with `git push origin main --tags` when you are ready to publish.

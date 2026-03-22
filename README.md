@@ -6,6 +6,7 @@ Advanced Proxmox Model Context Protocol (MCP) server in Python exposing rich Pro
 - Structure mirrors: [`bsahane/mcp-ansible`](https://github.com/bsahane/mcp-ansible/tree/main)
 - Architecture overview: `docs/ARCHITECTURE.md`
 - Shared deployment guide: `docs/CONTROL_PLANE_DEPLOYMENT.md`
+- Disposable VM workflow recipe: `docs/DISPOSABLE_VM_TEST_RECIPE.md`
 
 ## Quick start
 

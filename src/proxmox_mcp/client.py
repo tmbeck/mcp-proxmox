@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+import ssl
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import requests
+from requests.adapters import HTTPAdapter
 from proxmoxer import ProxmoxAPI
 
 from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
@@ -11,6 +14,27 @@ from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 VM_DISK_PREFIXES = ("ide", "sata", "scsi", "virtio")
 VM_UNUSED_DISK_PREFIX = "unused"
+
+
+class _TLSHttpAdapter(HTTPAdapter):
+    def __init__(self, ssl_context: ssl.SSLContext, *args: Any, **kwargs: Any) -> None:
+        self.ssl_context = ssl_context
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(self, *args: Any, **kwargs: Any):
+        kwargs["ssl_context"] = self.ssl_context
+        return super().init_poolmanager(*args, **kwargs)
+
+
+def configure_proxmox_https_session(session: requests.Session) -> requests.Session:
+    """Mount a stable HTTPS adapter for Proxmox API traffic.
+
+    Some environments negotiate TLS to Proxmox successfully with curl but hit
+    intermittent EOF/handshake issues through the default Python requests stack.
+    Mounting an explicit SSL context on the session makes the behavior reliable.
+    """
+    session.mount("https://", _TLSHttpAdapter(ssl.create_default_context()))
+    return session
 
 
 def get_default_lxc_password() -> str:
@@ -61,6 +85,7 @@ class ProxmoxClient:
             verify_ssl=verify,
             timeout=timeout,
         )
+        configure_proxmox_https_session(self._api._store["session"])
 
     @classmethod
     def from_env(cls) -> "ProxmoxClient":
@@ -381,11 +406,31 @@ class ProxmoxClient:
     def task_status(self, upid: str, node: Optional[str] = None) -> Dict[str, Any]:
         # If node is unknown, try cluster lookup then fall back to nodes
         try:
-            return self._api.cluster.tasks(upid).status.get()
+            status = self._api.cluster.tasks(upid).status.get()
+            if isinstance(status, dict) and status.get("status") is not None:
+                return status
         except Exception:
-            if not node:
-                raise
-            return self._api.nodes(node).tasks(upid).status.get()
+            pass
+
+        if not node:
+            raise ValueError(
+                "node is required when cluster task status lookup is unavailable"
+            )
+
+        try:
+            status = self._api.nodes(node).tasks(upid).status.get()
+            if isinstance(status, dict) and status.get("status") is not None:
+                return status
+        except Exception:
+            pass
+
+        tasks = self._api.nodes(node).tasks.get(source="all", limit=100)
+        if isinstance(tasks, list):
+            for task in tasks:
+                if isinstance(task, dict) and task.get("upid") == upid:
+                    return task
+
+        raise RuntimeError(f"Unable to resolve task status for {upid}")
 
     # -------- VM lifecycle --------
     def clone_vm(
@@ -447,7 +492,7 @@ class ProxmoxClient:
         return self._api.nodes(node).qemu.post(**params)
 
     def delete_vm(self, node: str, vmid: int, purge: bool = True) -> str:
-        return self._api.nodes(node).qemu(vmid).delete.post(purge=int(purge))
+        return self._api.nodes(node).qemu(vmid).delete(purge=int(purge))
 
     def start_vm(self, node: str, vmid: int) -> str:
         return self._api.nodes(node).qemu(vmid).status.start.post()
@@ -527,7 +572,7 @@ class ProxmoxClient:
         return self._api.nodes(node).lxc.post(**params)
 
     def delete_lxc(self, node: str, vmid: int, purge: bool = True) -> str:
-        return self._api.nodes(node).lxc(vmid).delete.post(purge=int(purge))
+        return self._api.nodes(node).lxc(vmid).delete(purge=int(purge))
 
     def start_lxc(self, node: str, vmid: int) -> str:
         return self._api.nodes(node).lxc(vmid).status.start.post()
@@ -646,7 +691,7 @@ class ProxmoxClient:
         return self._api.nodes(node).qemu(vmid).snapshot.post(**params)
 
     def delete_snapshot(self, node: str, vmid: int, name: str) -> str:
-        return self._api.nodes(node).qemu(vmid).snapshot(name).delete.post()
+        return self._api.nodes(node).qemu(vmid).snapshot(name).delete()
 
     def rollback_snapshot(self, node: str, vmid: int, name: str) -> str:
         return self._api.nodes(node).qemu(vmid).snapshot(name).rollback.post()
@@ -766,9 +811,8 @@ class ProxmoxClient:
         args: Optional[List[str]] = None,
         input_data: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {"command": command}
-        if args:
-            payload["args"] = args
+        command_parts = [command, *(args or [])]
+        payload: Dict[str, Any] = {"command": command_parts}
         if input_data is not None:
             payload["input-data"] = input_data
         return self._api.nodes(node).qemu(vmid).agent.exec.post(**payload)

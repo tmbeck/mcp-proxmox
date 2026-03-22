@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from proxmox_mcp.client import ProxmoxClient
 
@@ -71,8 +71,8 @@ class _FakeApi:
 
 def _build_client() -> tuple[ProxmoxClient, _FakeAgent]:
     client = ProxmoxClient.__new__(ProxmoxClient)
-    client._api = _FakeApi()
-    agent = client._api.nodes("pve").qemu(101).agent
+    client._api = cast(Any, _FakeApi())
+    agent = cast(_FakeAgent, client._api.nodes("pve").qemu(101).agent)
     return client, agent
 
 
@@ -82,7 +82,7 @@ def test_qga_exec_posts_expected_payload() -> None:
     result = client.qga_exec("pve", 101, command="bash", args=["-lc", "echo hi"])
 
     assert result == {"pid": 4321}
-    assert agent.exec.post_calls[-1] == {"command": "bash", "args": ["-lc", "echo hi"]}
+    assert agent.exec.post_calls[-1] == {"command": ["bash", "-lc", "echo hi"]}
 
 
 def test_qga_exec_wait_polls_until_exit(monkeypatch) -> None:

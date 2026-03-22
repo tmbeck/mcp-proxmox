@@ -37,7 +37,44 @@ For a local tool-style install, you can also use:
 uv tool install .
 ```
 
-## .env configuration
+## Configuration Strategy
+
+There are two good ways to configure the server:
+
+1. Repo-local development
+- keep a `.env` file in the repository root
+- use `uv run ...` from that repo
+
+2. Installed local MCP tool use (`uv tool install ...`)
+- do **not** rely on an implicit repo `.env`
+- instead, either:
+  - pass the Proxmox environment variables directly from the MCP client config, or
+  - point the server at a dedicated env file with `PROXMOX_ENV_FILE=/absolute/path/to/proxmox.env`, or
+  - pass `--env-file /absolute/path/to/proxmox.env`
+
+For installed tools, the most reliable default is a dedicated env file outside the repo, for example:
+
+```bash
+mkdir -p ~/.config/proxmox-mcp
+cp .env.example ~/.config/proxmox-mcp/proxmox.env
+chmod 600 ~/.config/proxmox-mcp/proxmox.env
+```
+
+Then launch the server with either:
+
+```bash
+proxmox-mcp --env-file "$HOME/.config/proxmox-mcp/proxmox.env"
+```
+
+or by setting:
+
+```bash
+PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env"
+```
+
+If neither is set, the server searches for `.env` from the current working directory upward.
+
+## Env File Contents
 
 - Copy `.env.example` to `.env` and edit values:
 
@@ -62,6 +99,7 @@ PROXMOX_MCP_PROFILES="core"
 Notes:
 - Use an API token with appropriate ACLs; for discovery, `PVEAuditor` at `/` is sufficient; for lifecycle, grant narrower roles (e.g., `PVEVMAdmin`) on a pool.
 - Using `.env` avoids zsh history expansion issues with `!` in token IDs.
+- For installed MCP client workflows, prefer `PROXMOX_ENV_FILE` or explicit client `env` blocks over relying on implicit `.env` discovery.
 - Outbound URL policy is strict by default: only private/local hosts are allowed unless explicitly listed in `PROXMOX_ALLOWED_URLS`.
 - Third-party integrations are disabled by default (`PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS=false`).
 - The optional API gateway is local-first by default (`PROXMOX_API_GATEWAY_HOST=127.0.0.1`), keeps `/health` unauthenticated, and requires `JWT_SECRET` for management routes.
@@ -109,6 +147,86 @@ uv run proxmox-mcp --profile full
 # Optional convenience wrapper for the broader shared profile set
 uv run proxmox-mcp-control-plane
 ```
+
+## Local MCP Client Setup
+
+For local client tools, the easiest stable pattern is:
+
+1. install the CLI once with `uv tool install .`
+2. create `~/.config/proxmox-mcp/proxmox.env`
+3. point the MCP client at `proxmox-mcp --profile core`
+4. pass `PROXMOX_ENV_FILE` in the client's environment block
+
+### Opencode
+
+Example `opencode.json` snippet:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "proxmox-mcp": {
+      "type": "local",
+      "command": ["proxmox-mcp", "--profile", "core"],
+      "enabled": true,
+      "environment": {
+        "PROXMOX_ENV_FILE": "/Users/you/.config/proxmox-mcp/proxmox.env"
+      }
+    }
+  }
+}
+```
+
+### Codex
+
+Example `~/.codex/config.toml` snippet:
+
+```toml
+[mcp_servers.proxmox-mcp]
+command = "proxmox-mcp"
+args = ["--profile", "core"]
+
+[mcp_servers.proxmox-mcp.env]
+PROXMOX_ENV_FILE = "/Users/you/.config/proxmox-mcp/proxmox.env"
+```
+
+If you prefer not to use an env file, Codex can also pass the individual Proxmox variables directly with `env` or forward them from your shell with `env_vars`.
+
+### Claude Code
+
+Project-local `.mcp.json` example:
+
+```json
+{
+  "mcpServers": {
+    "proxmox-mcp": {
+      "type": "stdio",
+      "command": "proxmox-mcp",
+      "args": ["--profile", "core"],
+      "env": {
+        "PROXMOX_ENV_FILE": "/Users/you/.config/proxmox-mcp/proxmox.env"
+      }
+    }
+  }
+}
+```
+
+Equivalent CLI form:
+
+```bash
+claude mcp add --transport stdio --scope project --env PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env" proxmox-mcp -- proxmox-mcp --profile core
+```
+
+### Why this differs from repo-local `.env`
+
+When you run `uv run ...` from the repository, a repo-root `.env` is a natural fit.
+
+When you run an installed tool from an MCP client, the process is no longer tied to the repo checkout, so configuration should be passed explicitly:
+
+- use a dedicated env file via `PROXMOX_ENV_FILE`, or
+- use the client's own environment block
+
+That makes the setup more predictable for Opencode, Codex, Claude Code, and similar local MCP clients.
 
 For a deeper explanation of the core-vs-control-plane split and the next package/service boundary work, see `docs/ARCHITECTURE.md`.
 For layered shared deployment guidance, see `docs/CONTROL_PLANE_DEPLOYMENT.md`.

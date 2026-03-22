@@ -5,9 +5,9 @@ import sys
 from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from dotenv import load_dotenv
 
 from .client import ProxmoxClient
+from .runtime_env import load_runtime_env
 from .utils import read_env, require_confirm, is_multi_cluster_mode
 from .cluster_manager import get_cluster_registry
 from .registrars.ai import register_ai_tools
@@ -31,10 +31,6 @@ from .tool_profiles import (
 server = FastMCP("proxmox-mcp")
 
 
-# Load .env early
-load_dotenv()
-
-
 # ---------- Helpers ----------
 
 
@@ -53,6 +49,8 @@ def get_client(cluster_name: Optional[str] = None) -> ProxmoxClient:
     Returns:
         ProxmoxClient instance configured for the specified (or default) cluster.
     """
+    load_runtime_env()
+
     if is_multi_cluster_mode():
         # Multi-cluster mode: use cluster registry
         registry = get_cluster_registry()
@@ -199,6 +197,13 @@ register_notes_tools(server, get_client, require_confirm)
 def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(description="Run the Proxmox MCP server")
     parser.add_argument(
+        "--env-file",
+        help=(
+            "Path to an env file containing Proxmox configuration. "
+            "Overrides implicit .env discovery."
+        ),
+    )
+    parser.add_argument(
         "--profile",
         action="append",
         default=None,
@@ -224,6 +229,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         for profile_name in sorted(PROFILE_DESCRIPTIONS):
             print(f"{profile_name}: {PROFILE_DESCRIPTIONS[profile_name]}")
         return
+
+    load_runtime_env(args.env_file)
 
     try:
         active_profiles = resolve_profiles(args.profile)

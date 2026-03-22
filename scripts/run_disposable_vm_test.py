@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import socket
 import subprocess
@@ -868,6 +869,20 @@ def main() -> int:
             snapshot_name = (
                 f"{args.snapshot_name_prefix}-{clone_vm_vmid}-{int(time.time())}"
             )
+            snapshot_marker_path = f"/var/tmp/{snapshot_name}.txt"
+            snapshot_marker_before = f"before-rollback-{snapshot_name}"
+            snapshot_marker_after = f"after-rollback-{snapshot_name}"
+            ensure_ssh_ok(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=(
+                    f"printf %s {shlex.quote(snapshot_marker_before)} | "
+                    f"sudo tee {shlex.quote(snapshot_marker_path)} >/dev/null"
+                ),
+                timeout=args.ssh_timeout,
+                description="prepare rollback marker",
+            )
             snapshot_upid = client.create_snapshot(
                 clone_vm_node,
                 clone_vm_vmid,
@@ -896,6 +911,134 @@ def main() -> int:
                 upid=snapshot_upid,
                 status=snapshot_status,
                 snapshots=sorted(snapshot_names),
+            )
+
+            ensure_ssh_ok(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=(
+                    f"printf %s {shlex.quote(snapshot_marker_after)} | "
+                    f"sudo tee {shlex.quote(snapshot_marker_path)} >/dev/null"
+                ),
+                timeout=args.ssh_timeout,
+                description="mutate rollback marker",
+            )
+            mutated_marker = ensure_ssh_ok(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=f"sudo cat {shlex.quote(snapshot_marker_path)}",
+                timeout=args.ssh_timeout,
+                description="verify mutated rollback marker",
+            )
+            if mutated_marker.stdout.strip() != snapshot_marker_after:
+                raise RuntimeError(
+                    "Rollback marker did not update before rollback snapshot test"
+                )
+
+            rollback_stop_upid = client.stop_vm(
+                clone_vm_node,
+                clone_vm_vmid,
+                overrule_shutdown=True,
+                timeout=120,
+            )
+            rollback_stop_status = wait_for_task_if_present(
+                client,
+                rollback_stop_upid,
+                node=clone_vm_node,
+                timeout=600,
+                poll_interval=args.poll_interval,
+            )
+            rollback_stop_vm_status = wait_for_vm_status(
+                client,
+                vmid=clone_vm_vmid,
+                expected_status="stopped",
+                timeout=60,
+                poll_interval=args.poll_interval,
+            )
+            log_step(
+                "stopped-for-rollback",
+                upid=rollback_stop_upid,
+                status=rollback_stop_status,
+                vm_status=rollback_stop_vm_status,
+            )
+
+            rollback_upid = client.rollback_snapshot(
+                clone_vm_node,
+                clone_vm_vmid,
+                snapshot_name,
+            )
+            rollback_status = wait_for_task_if_present(
+                client,
+                rollback_upid,
+                node=clone_vm_node,
+                timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+            )
+            rollback_vm_status = wait_for_vm_status(
+                client,
+                vmid=clone_vm_vmid,
+                expected_status="stopped",
+                timeout=60,
+                poll_interval=args.poll_interval,
+            )
+            log_step(
+                "snapshot-rolled-back",
+                snapshot_name=snapshot_name,
+                upid=rollback_upid,
+                status=rollback_status,
+                vm_status=rollback_vm_status,
+            )
+
+            rollback_restart_upid = client.start_vm(clone_vm_node, clone_vm_vmid)
+            rollback_restart_status = client.wait_task(
+                rollback_restart_upid,
+                node=clone_vm_node,
+                timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+            )
+            log_step(
+                "restarted-after-rollback",
+                upid=rollback_restart_upid,
+                status=rollback_restart_status,
+            )
+
+            ip_address = client.wait_for_vm_ip(
+                clone_vm_node,
+                clone_vm_vmid,
+                timeout=args.ssh_timeout,
+                poll_interval=5.0,
+            )
+            resources.guest_ip = ip_address
+            wait_for_ssh(ip_address, args.ssh_timeout)
+            log_step("guest-ip-after-rollback", ip_address=ip_address)
+
+            restored_marker = wait_for_ssh_command(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=f"sudo cat {shlex.quote(snapshot_marker_path)}",
+                timeout=args.ssh_timeout,
+                description="verify rollback marker restored",
+            )
+            if restored_marker.stdout.strip() != snapshot_marker_before:
+                raise RuntimeError(
+                    "Rollback snapshot did not restore the expected guest marker content"
+                )
+            log_step(
+                "rollback-verified",
+                snapshot_name=snapshot_name,
+                marker_path=snapshot_marker_path,
+                marker_value=restored_marker.stdout.strip(),
+            )
+            maybe_run_product_command(
+                resources,
+                ssh_user=args.ssh_user,
+                ip_address=ip_address,
+                command=args.test_command,
+                timeout=args.ssh_timeout,
+                description="post-rollback-test-command",
             )
 
             delete_snapshot_upid = client.delete_snapshot(

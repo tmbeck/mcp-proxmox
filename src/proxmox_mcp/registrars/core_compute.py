@@ -5,6 +5,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from ..tool_hints import DATA_LOSS_TOOL_ANNOTATIONS, conditional_data_loss_meta
+
 
 def register_core_compute_tools(
     server: FastMCP,
@@ -210,7 +212,7 @@ def register_core_compute_tools(
             )
         return result
 
-    @server.tool("proxmox-delete-vm")
+    @server.tool("proxmox-delete-vm", annotations=DATA_LOSS_TOOL_ANNOTATIONS)
     async def proxmox_delete_vm(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
@@ -470,7 +472,7 @@ def register_core_compute_tools(
             )
         return result
 
-    @server.tool("proxmox-delete-lxc")
+    @server.tool("proxmox-delete-lxc", annotations=DATA_LOSS_TOOL_ANNOTATIONS)
     async def proxmox_delete_lxc(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
@@ -753,7 +755,14 @@ def register_core_compute_tools(
             cache=cache,
         )
 
-    @server.tool("proxmox-vm-disk-remove")
+    @server.tool(
+        "proxmox-vm-disk-remove",
+        meta=conditional_data_loss_meta(
+            "mode='delete-volume' permanently deletes the backing volume.",
+            parameter="mode",
+            values=["delete-volume"],
+        ),
+    )
     async def proxmox_vm_disk_remove(
         device: str,
         vmid: Optional[int] = None,
@@ -921,7 +930,7 @@ def register_core_compute_tools(
         )
         return {"upid": upid}
 
-    @server.tool("proxmox-delete-snapshot")
+    @server.tool("proxmox-delete-snapshot", annotations=DATA_LOSS_TOOL_ANNOTATIONS)
     async def proxmox_delete_snapshot(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
@@ -943,7 +952,10 @@ def register_core_compute_tools(
         upid = client.delete_snapshot(vm_node, vm_vmid, name=snapname)
         return {"upid": upid}
 
-    @server.tool("proxmox-rollback-snapshot")
+    @server.tool(
+        "proxmox-rollback-snapshot",
+        annotations=DATA_LOSS_TOOL_ANNOTATIONS,
+    )
     async def proxmox_rollback_snapshot(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
@@ -1014,7 +1026,14 @@ def register_core_compute_tools(
             )
         return result
 
-    @server.tool("proxmox-restore-vm")
+    @server.tool(
+        "proxmox-restore-vm",
+        meta=conditional_data_loss_meta(
+            "force=true can overwrite existing VM state at the target VMID.",
+            parameter="force",
+            values=[True],
+        ),
+    )
     async def proxmox_restore_vm(
         node: Optional[str] = None,
         vmid: int = 0,

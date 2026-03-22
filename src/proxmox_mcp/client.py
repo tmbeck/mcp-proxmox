@@ -169,6 +169,15 @@ class ProxmoxClient:
         _VERSION_COMPATIBILITY_CACHE[cache_key] = compatibility
         return compatibility
 
+    def get_version_compatibility_payload(self) -> Dict[str, Any]:
+        compatibility = self.get_version_compatibility()
+        return {
+            "detected_version": compatibility.detected_version,
+            "tested_version": TESTED_PROXMOX_VE_VERSION,
+            "tested_series": TESTED_PROXMOX_VE_SERIES_LABEL,
+            "compatible": compatibility.compatible,
+        }
+
     def list_nodes(self) -> List[Dict[str, Any]]:
         return self._api.nodes.get()
 

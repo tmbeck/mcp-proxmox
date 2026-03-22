@@ -14,7 +14,7 @@ Target workflow:
 6. verify the guest sees the new disk
 7. detach the disk non-destructively
 8. optionally delete the detached disk volume
-9. create and delete a disposable snapshot
+9. create, roll back, and delete a disposable snapshot
 10. stop the VM immediately and start it again
 11. shut it down cleanly
 12. destroy the disposable VM
@@ -56,7 +56,7 @@ Defaults now cover:
 
 - clone/start/guest readiness
 - disk add/detach/delete-volume cycle
-- snapshot create/delete
+- snapshot create/rollback/delete
 - immediate stop plus restart
 - graceful shutdown and final VM deletion
 
@@ -140,7 +140,7 @@ If your goal is product validation rather than a minimal MCP smoke test, use thi
 9. Attach a new `40 GB` data disk.
 10. Delete the detached disk.
 11. Verify the guest sees `4` attached data disks.
-12. Create and delete a disposable snapshot.
+12. Create, roll back, and delete a disposable snapshot.
 13. Stop the VM immediately, start it again, and confirm the guest still sees the expected disks.
 14. Shut off the VM cleanly.
 15. Delete the disposable VM and its owned test disks.
@@ -323,7 +323,7 @@ Tool: `proxmox-vm-disk-remove`
 Expected result:
 - unused test disk is deleted from storage
 
-### 11. Create and delete a disposable snapshot
+### 11. Create, roll back, and delete a disposable snapshot
 
 This snapshot must be created on the disposable VM only.
 
@@ -341,6 +341,21 @@ Tool: `proxmox-create-snapshot`
 
 Expected result:
 - snapshot appears in `proxmox-list-snapshots`
+
+Example rollback:
+
+```json
+{
+  "vmid": 8100,
+  "snapname": "mcp-smoke-snap-8100-<timestamp>",
+  "wait": true
+}
+```
+
+Tool: `proxmox-rollback-snapshot`
+
+Expected result:
+- after the VM is started again, guest-visible state reverts to the snapshot point
 
 Example delete:
 
@@ -387,6 +402,8 @@ Tool: `proxmox-start-vm`
 Expected result:
 - VM becomes reachable again over external SSH
 - guest still shows the expected disk layout
+
+Use `overrule_shutdown`, not `hard`; `hard` is only a deprecated alias kept through `0.2.x` and planned for removal in `0.3.0`.
 
 ### 13. Shut down the disposable VM cleanly
 
@@ -452,7 +469,7 @@ This recipe has already been proven live in two stages:
   - guest-visible disk add
   - guest-visible non-destructive detach
   - guest-visible replacement disk add/delete-volume
-  - snapshot create/delete
+  - snapshot create/rollback/delete
   - immediate stop/start
   - graceful shutdown
   - cleanup

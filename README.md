@@ -251,6 +251,8 @@ Profile guide:
 - Proxmox VE: live validation has been performed against Proxmox VE `9.1.6`.
 - Patch releases within `9.1.x` are expected to be compatible; other major/minor releases are treated as unverified.
 - The MCP server prints a stderr warning when a connected cluster reports a Proxmox VE version outside the tested `9.1.x` series.
+- `proxmox-get-cluster-version-compatibility` and `proxmox-get-all-cluster-status` also expose the detected version and compatibility verdict as MCP tool data.
+- True data-loss tools advertise MCP `destructiveHint`; parameter-gated cases such as `proxmox-vm-disk-remove` and `proxmox-restore-vm` publish extra `meta.proxmox.destructive_when` hints for clients that inspect tool metadata.
 - Current automated coverage: code-level tests, profile composition, security regressions, and packaging/entrypoint behavior.
 - Not yet covered by CI: live integration tests against specific Proxmox VE versions or cluster topologies.
 
@@ -352,7 +354,7 @@ Format below per tool:
   - Example: `{ "name": "web01", "purge": true }`
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-start-vm` / `proxmox-stop-vm` / `proxmox-reboot-vm` / `proxmox-shutdown-vm`
-  - Manage power state; `shutdown` requests a clean guest shutdown, while `stop` is immediate and `overrule_shutdown=true` cancels an in-progress shutdown task first (`hard` remains as a deprecated alias)
+  - Manage power state; `shutdown` requests a clean guest shutdown, while `stop` is immediate and `overrule_shutdown=true` cancels an in-progress shutdown task first (`hard` remains as a deprecated alias through `0.2.x` and is planned for removal in `0.3.0`)
   - Example: `{ "name": "web01", "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-migrate-vm`
@@ -447,7 +449,8 @@ uv run mypy src
 Notes:
 - `uv run pytest` runs the stable automated suite.
 - Stable automated tests live under `tests/`.
-- `uv run python scripts/run_disposable_vm_test.py --yes-delete-disk --yes-delete-vm --cleanup-on-failure` runs the opt-in live smoke workflow against a disposable clone, including disk, snapshot, stop/start, shutdown, and delete coverage.
+- `uv run python scripts/run_disposable_vm_test.py --yes-delete-disk --yes-delete-vm --cleanup-on-failure` runs the opt-in live smoke workflow against a disposable clone, including disk, snapshot/rollback, stop/start, shutdown, and delete coverage.
+- `hard` on `proxmox-stop-vm` and `force` in the Python client are deprecated compatibility aliases retained through `0.2.x`; prefer `overrule_shutdown`, with alias removal planned for `0.3.0`.
 - `uv run proxmox-mcp-release-patch` bumps the next patch version, refreshes `uv.lock`, runs the automated tests, creates a release commit, and tags it.
 - The release helper requires a clean git worktree and only expects version-file changes in `pyproject.toml`, `src/proxmox_mcp/__init__.py`, and `uv.lock`.
 - Successful release helper runs finish by creating `chore: release vX.Y.Z` and annotated tag `vX.Y.Z`; push them with `git push origin main --tags` when you are ready to publish.

@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..notes_manager import NotesManager
+from ..tool_hints import DATA_LOSS_TOOL_ANNOTATIONS
 
 
 def register_notes_tools(
@@ -79,7 +80,7 @@ def register_notes_tools(
             "result": result,
         }
 
-    @server.tool("proxmox-vm-notes-remove")
+    @server.tool("proxmox-vm-notes-remove", annotations=DATA_LOSS_TOOL_ANNOTATIONS)
     async def proxmox_vm_notes_remove(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
@@ -175,7 +176,7 @@ def register_notes_tools(
             "result": result,
         }
 
-    @server.tool("proxmox-lxc-notes-remove")
+    @server.tool("proxmox-lxc-notes-remove", annotations=DATA_LOSS_TOOL_ANNOTATIONS)
     async def proxmox_lxc_notes_remove(
         vmid: Optional[int] = None,
         name: Optional[str] = None,

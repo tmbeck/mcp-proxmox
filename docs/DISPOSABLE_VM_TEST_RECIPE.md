@@ -8,8 +8,8 @@ Target workflow:
 
 1. clone a disposable VM from a template
 2. start it
-3. verify guest access
-4. install and test software in the guest
+3. verify guest access over external SSH
+4. install and test software in the guest over external SSH
 5. add a data disk
 6. verify the guest sees the new disk
 7. detach the disk non-destructively
@@ -18,13 +18,15 @@ Target workflow:
 
 ## Guardrails
 
-- Use a reserved VMID range only. Recommended: `8100-8199`.
+- Never delete or destroy any VMID below `9000`.
+- Use a reserved disposable VMID range only. Recommended: `9000-9099`.
 - Use a disposable name prefix only: `mcp-test-<vmid>-<timestamp>`.
 - Never run clone, disk, or delete operations against any VM that does not match the disposable prefix/range.
 - Never remove a disk unless it was created during the current test run.
 - Ask for confirmation before any destructive action:
   - deleting a disk volume
   - deleting the disposable VM
+  - deleting any resource that was not created during the current clone-based test run
 
 ## Prerequisites
 
@@ -32,7 +34,34 @@ Target workflow:
 - `PROXMOX_MCP_PROFILES="core"`.
 - Default node, storage, and bridge are correct.
 - A known template VM is available for cloning.
-- For full in-guest install/test steps, the template must have QEMU guest agent installed and running.
+- For full in-guest install/test steps, the template must support reliable external SSH access as `ubuntu`.
+- The template should already have your SSH public key installed, or the clone workflow should inject it via cloud-init.
+- For best reliability, prefer deterministic networking:
+  - static IP via cloud-init, or
+  - DHCP reservation tied to the cloned guest
+
+## External SSH Reliability Notes
+
+For this recipe, guest operations are intentionally performed over external SSH rather than an MCP guest-exec helper.
+
+Recommended SSH assumptions:
+
+- user: `ubuntu`
+- key-based auth only
+- no interactive password prompts
+- `StrictHostKeyChecking=accept-new` or a disposable known-hosts file for test automation
+
+Recommended SSH command shape:
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new ubuntu@<vm-ip> '<command>'
+```
+
+Before product install/test steps, wait for cloud-init to settle if the guest uses cloud-init:
+
+```bash
+ssh ubuntu@<vm-ip> 'cloud-init status --wait'
+```
 
 ## Current Known-Good Example
 
@@ -57,11 +86,35 @@ Treat those as examples, not hardcoded requirements.
    - `proxmox-vm-disk-remove`
    - `proxmox-delete-vm`
 2. Verify the template VM exists and is marked as a template.
-3. Select a free VMID in the reserved range.
+3. Select a free VMID above `9000` in the reserved disposable range.
 4. Confirm the chosen disposable name does not already exist.
 5. Confirm the template’s guest agent is expected to work if in-guest testing is required.
 
 ## Step-by-Step Recipe
+
+## Product Validation Variant
+
+If your goal is product validation rather than a minimal MCP smoke test, use this stricter sequence:
+
+1. Clone template VM `8001`.
+2. The new VMID must be greater than `9000`.
+3. Start the VM and let it settle.
+4. Confirm you can obtain the guest IP and log in over external SSH as `ubuntu`.
+5. Attach `4` data disks of `40 GB` each.
+6. Detach one of those data disks.
+7. Attach a new `40 GB` data disk.
+8. Delete the detached disk.
+9. Verify the guest sees `4` attached data disks.
+10. Shut off the VM.
+11. Delete the disposable VM and its owned test disks.
+
+Important clarification:
+
+- Count data disks separately from the OS disk.
+- In a typical Ubuntu guest, the OS disk still exists, so total visible disk devices will usually be `5` (`1` OS disk + `4` data disks).
+- The intended success condition is therefore: the guest returns to exactly four attached test/data disks after the detach/add/delete cycle.
+
+The default recipe below remains a lower-risk version for incremental verification.
 
 ### 1. Clone the template
 
@@ -103,38 +156,27 @@ Expected result:
 
 Example:
 
-```json
-{
-  "vmid": 8100,
-  "script": "echo guest-ready && uname -a && lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT",
-  "wait": true
-}
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new ubuntu@<vm-ip> \
+  'echo guest-ready && uname -a && lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT'
 ```
 
-Tool: `proxmox-guest-shell`
-
 Expected result:
-- exit code `0`
+- SSH login succeeds as `ubuntu`
 - baseline guest disk state is visible
 
 Stop if:
-- guest agent is unavailable
-- command execution fails repeatedly
+- guest IP cannot be determined reliably
+- SSH login fails repeatedly
+- cloud-init never settles
 
 ### 4. Install/test software in guest
 
 Example pattern:
 
-```json
-{
-  "vmid": 8100,
-  "script": "sudo ./install.sh && ./run-tests.sh",
-  "wait": true,
-  "timeout": 1800
-}
+```bash
+ssh ubuntu@<vm-ip> 'sudo ./install.sh && ./run-tests.sh'
 ```
-
-Tool: `proxmox-guest-shell`
 
 Expected result:
 - exit code `0`
@@ -179,15 +221,9 @@ Expected result:
 
 Example:
 
-```json
-{
-  "vmid": 8100,
-  "script": "udevadm settle || true; sleep 2; lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT",
-  "wait": true
-}
+```bash
+ssh ubuntu@<vm-ip> 'udevadm settle || true; sleep 2; lsblk -J -o NAME,SIZE,TYPE,MOUNTPOINT'
 ```
-
-Tool: `proxmox-guest-shell`
 
 Expected result:
 - guest now shows an additional disk (for example `sda`)

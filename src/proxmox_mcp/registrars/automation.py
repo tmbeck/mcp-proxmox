@@ -16,7 +16,6 @@ def _primary_manager_vm(client: Any, cluster_name: str) -> Dict[str, Any]:
 def register_automation_tools(
     server: FastMCP,
     get_client: Callable[[], Any],
-    require_confirm: Callable[[Optional[bool]], None],
     get_openshift_installer: Callable[[Any], Any],
     get_docker_swarm_symbols: Callable[[], Dict[str, Any]],
     get_infrastructure_manager: Callable[[Any], Any],
@@ -35,7 +34,6 @@ def register_automation_tools(
         bridge: Optional[str] = None,
         rhcos_version: str = "4.14",
         base_vmid: int = 500,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Deploy complete OpenShift cluster (bootstrap + masters + workers)."""
@@ -46,8 +44,6 @@ def register_automation_tools(
 
         if not node_id or not storage_id or not bridge_id:
             raise ValueError("node, storage, and bridge are required (or set defaults)")
-
-        require_confirm(confirm)
 
         if topology not in ["three-master", "production"]:
             raise ValueError(
@@ -110,7 +106,6 @@ def register_automation_tools(
         bridge: Optional[str] = None,
         rhcos_version: str = "4.14",
         vmid: int = 600,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 1800,
@@ -124,8 +119,6 @@ def register_automation_tools(
 
         if not node_id or not storage_id or not bridge_id:
             raise ValueError("node, storage, and bridge are required (or set defaults)")
-
-        require_confirm(confirm)
 
         cluster_config = {
             "cluster_name": cluster_name,
@@ -235,7 +228,6 @@ def register_automation_tools(
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
         base_vmid: int = 800,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Create Docker Swarm cluster with manager and worker nodes."""
@@ -249,8 +241,6 @@ def register_automation_tools(
         ssh_keys = ssh_keys or []
         if not ssh_keys:
             raise ValueError("ssh_keys are required for Docker Swarm nodes")
-
-        require_confirm(confirm)
 
         if dry_run:
             return {
@@ -304,7 +294,6 @@ def register_automation_tools(
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
         base_vmid: int = 800,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Create Docker Swarm cluster with preset configurations."""
@@ -318,8 +307,6 @@ def register_automation_tools(
         ssh_keys = ssh_keys or []
         if not ssh_keys:
             raise ValueError("ssh_keys are required for Docker Swarm nodes")
-
-        require_confirm(confirm)
 
         docker_swarm = get_docker_swarm_symbols()
         preset_configs = {
@@ -377,7 +364,6 @@ def register_automation_tools(
         manager_name: Optional[str] = None,
         manager_node: Optional[str] = None,
         advertise_ip: str = "",
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Initialize Docker Swarm on primary manager node."""
         client = get_client()
@@ -393,7 +379,6 @@ def register_automation_tools(
         if not advertise_ip:
             raise ValueError("advertise_ip is required for swarm initialization")
 
-        require_confirm(confirm)
         result = client.initialize_docker_swarm(vm_node, vm_vmid, advertise_ip)
         if result.get("success"):
             result.update(client.get_swarm_join_tokens(vm_node, vm_vmid))
@@ -407,7 +392,6 @@ def register_automation_tools(
         role: str = "worker",
         manager_ip: str = "",
         token: str = "",
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Join node to existing Docker Swarm cluster."""
         client = get_client()
@@ -418,7 +402,6 @@ def register_automation_tools(
         if role not in ["manager", "worker"]:
             raise ValueError("role must be 'manager' or 'worker'")
 
-        require_confirm(confirm)
         result = client.join_docker_swarm(vm_node, vm_vmid, manager_ip, token)
         result.update({"role": role, "manager_ip": manager_ip})
         return result
@@ -439,12 +422,10 @@ def register_automation_tools(
         environment: Optional[Dict[str, str]] = None,
         networks: Optional[List[str]] = None,
         constraints: Optional[List[str]] = None,
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Create Docker Swarm service."""
         client = get_client()
         manager_vm = _primary_manager_vm(client, cluster_name)
-        require_confirm(confirm)
         result = client.create_docker_service(
             manager_vm["node"],
             manager_vm["vmid"],
@@ -471,12 +452,10 @@ def register_automation_tools(
         cluster_name: str,
         service_name: str,
         replicas: int,
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Scale Docker Swarm service."""
         client = get_client()
         manager_vm = _primary_manager_vm(client, cluster_name)
-        require_confirm(confirm)
         result = client.scale_docker_service(
             manager_vm["node"], manager_vm["vmid"], service_name, replicas
         )
@@ -491,12 +470,11 @@ def register_automation_tools(
 
     @server.tool("proxmox-docker-service-remove")
     async def proxmox_docker_service_remove(
-        cluster_name: str, service_name: str, confirm: Optional[bool] = None
+        cluster_name: str, service_name: str
     ) -> Dict[str, Any]:
-        """Remove Docker Swarm service."""
+        """Remove a Docker Swarm service and stop its running tasks."""
         client = get_client()
         manager_vm = _primary_manager_vm(client, cluster_name)
-        require_confirm(confirm)
         result = client.remove_docker_service(
             manager_vm["node"], manager_vm["vmid"], service_name
         )
@@ -511,12 +489,10 @@ def register_automation_tools(
         subnet: Optional[str] = None,
         attachable: bool = False,
         encrypted: bool = False,
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Create Docker network in Swarm cluster."""
         client = get_client()
         manager_vm = _primary_manager_vm(client, cluster_name)
-        require_confirm(confirm)
         result = client.create_docker_network(
             manager_vm["node"],
             manager_vm["vmid"],
@@ -555,7 +531,6 @@ def register_automation_tools(
         cluster_name: str,
         command: str,
         target: str = "manager",
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Execute Docker command on cluster node."""
         client = get_client()
@@ -572,7 +547,6 @@ def register_automation_tools(
             raise ValueError(f"No {target} nodes found in cluster: {cluster_name}")
 
         target_vm = target_vms[0]
-        require_confirm(confirm)
         result = client.execute_docker_command(
             target_vm["node"], target_vm["vmid"], command
         )

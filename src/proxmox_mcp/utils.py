@@ -343,12 +343,6 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def require_confirm(confirm: Optional[bool]) -> None:
-    """Require confirmation for destructive operations."""
-    if not confirm:
-        raise ValueError("This operation is destructive. Pass confirm=true to proceed.")
-
-
 def format_size(size_bytes: int) -> str:
     """Format byte size into human readable format."""
     if size_bytes == 0:

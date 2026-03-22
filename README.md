@@ -248,8 +248,9 @@ Profile guide:
 
 - Python: automated CI currently runs on Python `3.11`.
 - Client library: the project targets `proxmoxer>=2.0.1`.
-- Proxmox VE: this repository does not yet claim a certified live-cluster compatibility matrix.
-- Current expectation: the MCP server is written against the modern Proxmox VE API shape used by recent releases, but you should validate it against your own cluster before production rollout.
+- Proxmox VE: live validation has been performed against Proxmox VE `9.1.6`.
+- Patch releases within `9.1.x` are expected to be compatible; other major/minor releases are treated as unverified.
+- The MCP server prints a stderr warning when a connected cluster reports a Proxmox VE version outside the tested `9.1.x` series.
 - Current automated coverage: code-level tests, profile composition, security regressions, and packaging/entrypoint behavior.
 - Not yet covered by CI: live integration tests against specific Proxmox VE versions or cluster topologies.
 
@@ -285,7 +286,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ## Tools reference
 
-All tools are available via MCP. Destructive tools accept `confirm`, and most write operations support `dry_run`, `wait`, `timeout`, `poll_interval`.
+All tools are available via MCP. Most write operations support `dry_run`, `wait`, `timeout`, and `poll_interval`. Tool descriptions call out operations that can permanently delete data.
 
 Format below per tool:
 - Description
@@ -340,18 +341,18 @@ Format below per tool:
 ### VM lifecycle
 - `proxmox-clone-vm`
   - Clone template VM to new VMID/name (supports target node, storage)
-  - Example: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "confirm": true, "wait": true }`
+  - Example: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-create-vm`
   - Create new VM from ISO/template (minimal config)
-  - Example: `{ "node": "pve", "vmid": 200, "name": "web02", "iso": "debian.iso", "confirm": true }`
+  - Example: `{ "node": "pve", "vmid": 200, "name": "web02", "iso": "debian.iso" }`
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-delete-vm`
-  - Delete VM (confirm, purge)
-  - Example: `{ "name": "web01", "purge": true, "confirm": true }`
+  - Permanently delete a VM; `purge` also removes owned resources
+  - Example: `{ "name": "web01", "purge": true }`
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-start-vm` / `proxmox-stop-vm` / `proxmox-reboot-vm` / `proxmox-shutdown-vm`
-  - Manage power state (stop supports hard and timeout)
+  - Manage power state; `shutdown` requests a clean guest shutdown, while `stop` is immediate and `hard=true` overrules an in-progress shutdown task first
   - Example: `{ "name": "web01", "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-migrate-vm`
@@ -360,31 +361,31 @@ Format below per tool:
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-resize-vm-disk`
   - Grow disk (GB) on target disk (e.g., scsi0)
-  - Example: `{ "name": "web01", "disk": "scsi0", "grow_gb": 10, "confirm": true, "wait": true }`
+  - Example: `{ "name": "web01", "disk": "scsi0", "grow_gb": 10, "wait": true }`
   - Answer: `{ "upid": "UPID:...", "status": {...} }`
 - `proxmox-vm-disk-list` / `proxmox-vm-disk-add` / `proxmox-vm-disk-remove`
-  - Inspect attached and unused disks, add a new disk or volume, and remove a disk in explicit `detach` or `delete-volume` mode
-  - Example: `{ "name": "web01", "size_gb": 100, "storage": "local-lvm", "confirm": true }`
+  - Inspect attached and unused disks, add a new disk or volume, and remove a disk in explicit `detach` or `delete-volume` mode; `delete-volume` permanently deletes the backing volume
+  - Example: `{ "name": "web01", "size_gb": 100, "storage": "local-lvm" }`
   - Answer: `{ "upid": "UPID:...", "device": "scsi1", ... }`
-  - Removal example: `{ "name": "web01", "device": "scsi1", "mode": "detach", "wait": true, "confirm": true }`
-  - Destructive removal example: `{ "name": "web01", "device": "scsi1", "mode": "delete-volume", "wait": true, "confirm": true }`
+  - Removal example: `{ "name": "web01", "device": "scsi1", "mode": "detach", "wait": true }`
+  - Destructive removal example: `{ "name": "web01", "device": "scsi1", "mode": "delete-volume", "wait": true }`
 - `proxmox-configure-vm`
   - Set whitelisted params (cores, memory, balloon, netX, agent, etc.)
-  - Example: `{ "name": "web01", "params": { "memory": 4096, "cores": 4 }, "confirm": true }`
+  - Example: `{ "name": "web01", "params": { "memory": 4096, "cores": 4 } }`
   - Answer: `{ "upid": "UPID:..." }` or `{ "result": null }`
 
 ### LXC lifecycle
 - `proxmox-create-lxc`
   - Create container from template (CPU/mem, rootfs size, net, storage)
-  - Example: `{ "node": "pve", "vmid": 50050, "hostname": "ct01", "ostemplate": "debian-12.tar.zst", "confirm": true }`
+  - Example: `{ "node": "pve", "vmid": 50050, "hostname": "ct01", "ostemplate": "debian-12.tar.zst" }`
   - Answer: `{ "upid": "UPID:..." }`
 - `proxmox-delete-lxc` / `proxmox-start-lxc` / `proxmox-stop-lxc` / `proxmox-configure-lxc`
-  - Manage container lifecycle and config
+  - Manage container lifecycle and config; `proxmox-delete-lxc` permanently deletes container data
 
 ### Cloud-init & networking
 - `proxmox-cloudinit-set`
   - Set CI params (ipconfig0, sshkeys, ciuser/cipassword)
-  - Example: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1", "confirm": true }`
+  - Example: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1" }`
   - Answer: `{ "upid": "UPID:..." }` or `{ "result": null }`
 - `proxmox-vm-nic-add` / `proxmox-vm-nic-remove`
   - Add/remove NICs (bridge, model, VLAN)
@@ -397,9 +398,9 @@ Format below per tool:
 - `proxmox-template-vm`
   - Convert VM to template
 - `proxmox-list-snapshots` / `proxmox-create-snapshot` / `proxmox-delete-snapshot` / `proxmox-rollback-snapshot`
-  - Manage snapshots; rollback supports `wait`
+  - Manage snapshots; deleting a snapshot permanently removes that recovery point, and rollback discards newer guest state
 - `proxmox-backup-vm` / `proxmox-restore-vm`
-  - Run vzdump and restore archives
+  - Run vzdump and restore archives; `force=true` on restore can overwrite existing VM state
 
 ### Metrics and monitoring
 - `proxmox-vm-metrics`
@@ -425,8 +426,8 @@ Format below per tool:
 
 - List nodes: `{}` for `proxmox-list-nodes`
 - VMs on node `pve`: `{ "node": "pve" }` for `proxmox-list-vms`
-- Clone a template: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "confirm": true, "wait": true }`
-- Configure Cloud-init IP: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1", "confirm": true }`
+- Clone a template: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "wait": true }`
+- Configure Cloud-init IP: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1" }`
 - Run an install/test command in a Linux guest: `{ "name": "web01", "script": "sudo ./install.sh && ./run-tests.sh", "wait": true }` for `proxmox-guest-shell`
 
 ## Notes

@@ -23,7 +23,7 @@ Target workflow:
 - Use a disposable name prefix only: `mcp-test-<vmid>-<timestamp>`.
 - Never run clone, disk, or delete operations against any VM that does not match the disposable prefix/range.
 - Never remove a disk unless it was created during the current test run.
-- Ask for confirmation before any destructive action:
+- Treat the following steps as destructive because they can permanently remove data:
   - deleting a disk volume
   - deleting the disposable VM
   - deleting any resource that was not created during the current clone-based test run
@@ -139,7 +139,6 @@ Example:
   "new_vmid": 8100,
   "name": "mcp-test-8100-<timestamp>",
   "storage": "local-vmx",
-  "confirm": true,
   "wait": true
 }
 ```
@@ -240,8 +239,7 @@ Example:
   "interface": "scsi",
   "storage": "local-vmx",
   "size_gb": 2,
-  "format": "raw",
-  "confirm": true
+  "format": "raw"
 }
 ```
 
@@ -270,8 +268,7 @@ Example:
   "vmid": 8100,
   "device": "scsi0",
   "mode": "detach",
-  "wait": true,
-  "confirm": true
+  "wait": true
 }
 ```
 
@@ -284,7 +281,7 @@ Expected result:
 
 ### 10. Optional destructive disk cleanup
 
-Only after explicit confirmation.
+This permanently deletes the backing test disk from storage.
 
 Example:
 
@@ -293,8 +290,7 @@ Example:
   "vmid": 8100,
   "device": "unused0",
   "mode": "delete-volume",
-  "wait": true,
-  "confirm": true
+  "wait": true
 }
 ```
 
@@ -305,7 +301,7 @@ Expected result:
 
 ### 11. Destroy the disposable VM
 
-Only after explicit confirmation.
+This permanently deletes the disposable VM and any purged resources.
 
 Example:
 
@@ -313,8 +309,7 @@ Example:
 {
   "vmid": 8100,
   "purge": true,
-  "wait": true,
-  "confirm": true
+  "wait": true
 }
 ```
 

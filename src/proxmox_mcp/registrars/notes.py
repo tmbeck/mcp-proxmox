@@ -11,7 +11,6 @@ from ..notes_manager import NotesManager
 def register_notes_tools(
     server: FastMCP,
     get_client: Callable[[], Any],
-    require_confirm: Callable[[Optional[bool]], None],
 ) -> None:
     @server.tool("proxmox-vm-notes-read")
     async def proxmox_vm_notes_read(
@@ -42,7 +41,6 @@ def register_notes_tools(
         format: str = "auto",
         validate: bool = True,
         backup: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -72,7 +70,6 @@ def register_notes_tools(
                 "previous_notes_length": len(previous_notes) if previous_notes else 0,
             }
 
-        require_confirm(confirm)
         result = client.set_vm_notes(vm_node, vm_vmid, content)
         return {
             "success": True,
@@ -88,9 +85,9 @@ def register_notes_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         backup: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
+        """Clear VM notes and permanently discard the current notes content."""
         client = get_client()
         vm_vmid, vm_node, vm_info = client.resolve_vm(vmid=vmid, name=name, node=node)
         backup_notes = client.get_vm_notes(vm_node, vm_vmid) if backup else None
@@ -103,7 +100,6 @@ def register_notes_tools(
                 "backup_notes_length": len(backup_notes) if backup_notes else 0,
             }
 
-        require_confirm(confirm)
         result = client.set_vm_notes(vm_node, vm_vmid, "")
         return {
             "success": True,
@@ -141,7 +137,6 @@ def register_notes_tools(
         format: str = "auto",
         validate: bool = True,
         backup: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -171,7 +166,6 @@ def register_notes_tools(
                 "previous_notes_length": len(previous_notes) if previous_notes else 0,
             }
 
-        require_confirm(confirm)
         result = client.set_lxc_notes(ct_node, ct_vmid, content)
         return {
             "success": True,
@@ -187,9 +181,9 @@ def register_notes_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         backup: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
+        """Clear LXC notes and permanently discard the current notes content."""
         client = get_client()
         ct_vmid, ct_node, ct_info = client.resolve_lxc(vmid=vmid, name=name, node=node)
         backup_notes = client.get_lxc_notes(ct_node, ct_vmid) if backup else None
@@ -202,7 +196,6 @@ def register_notes_tools(
                 "backup_notes_length": len(backup_notes) if backup_notes else 0,
             }
 
-        require_confirm(confirm)
         result = client.set_lxc_notes(ct_node, ct_vmid, "")
         return {
             "success": True,

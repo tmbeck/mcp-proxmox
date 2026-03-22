@@ -6,9 +6,13 @@ from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from .client import ProxmoxClient
+from .client import (
+    ProxmoxClient,
+    TESTED_PROXMOX_VE_SERIES_LABEL,
+    TESTED_PROXMOX_VE_VERSION,
+)
 from .runtime_env import load_runtime_env
-from .utils import read_env, require_confirm, is_multi_cluster_mode
+from .utils import read_env, is_multi_cluster_mode
 from .cluster_manager import get_cluster_registry
 from .registrars.ai import register_ai_tools
 from .registrars.automation import register_automation_tools
@@ -29,6 +33,35 @@ from .tool_profiles import (
 
 
 server = FastMCP("proxmox-mcp")
+_WARNED_PROXMOX_TARGETS: set[tuple[str, str]] = set()
+
+
+def _warn_if_proxmox_version_mismatch(
+    client: ProxmoxClient, cluster_name: Optional[str] = None
+) -> None:
+    compatibility = client.get_version_compatibility()
+    if compatibility.compatible is not False or not compatibility.detected_version:
+        return
+
+    target_label = cluster_name or client.base_url
+    cache_key = (client.base_url, target_label)
+    if cache_key in _WARNED_PROXMOX_TARGETS:
+        return
+
+    if cluster_name:
+        target = f"cluster '{cluster_name}' ({client.base_url})"
+    else:
+        target = client.base_url
+
+    print(
+        f"[proxmox-mcp] Warning: {target} reports Proxmox VE "
+        f"{compatibility.detected_version}; this MCP server is tested against "
+        f"{TESTED_PROXMOX_VE_VERSION}. Patch releases within "
+        f"{TESTED_PROXMOX_VE_SERIES_LABEL} are expected to be compatible, but "
+        "other major/minor versions are unverified.",
+        file=sys.stderr,
+    )
+    _WARNED_PROXMOX_TARGETS.add(cache_key)
 
 
 # ---------- Helpers ----------
@@ -54,11 +87,15 @@ def get_client(cluster_name: Optional[str] = None) -> ProxmoxClient:
     if is_multi_cluster_mode():
         # Multi-cluster mode: use cluster registry
         registry = get_cluster_registry()
-        return registry.get_client(cluster_name)
+        client = registry.get_client(cluster_name)
+        _warn_if_proxmox_version_mismatch(client, cluster_name)
+        return client
     else:
         # Single-cluster mode: use environment variables
         read_env()
-        return ProxmoxClient.from_env()
+        client = ProxmoxClient.from_env()
+        _warn_if_proxmox_version_mismatch(client)
+        return client
 
 
 def get_openshift_installer(client: ProxmoxClient):
@@ -136,17 +173,17 @@ register_cluster_tools(server, get_client, is_multi_cluster_mode, get_cluster_re
 # ---------- Core discovery ----------
 
 
-register_core_compute_tools(server, get_client, require_confirm)
+register_core_compute_tools(server, get_client)
 
 
 # ---------- Metrics ----------
-register_core_admin_tools(server, get_client, require_confirm)
+register_core_admin_tools(server, get_client)
 
 
 # -------- CloudInit and Advanced OS Installation --------
 
 
-register_provisioning_tools(server, get_client, require_confirm)
+register_provisioning_tools(server, get_client)
 
 
 # ---------- Automation Features ----------
@@ -155,7 +192,6 @@ register_provisioning_tools(server, get_client, require_confirm)
 register_automation_tools(
     server,
     get_client,
-    require_confirm,
     get_openshift_installer,
     get_docker_swarm_symbols,
     get_infrastructure_manager,
@@ -191,7 +227,7 @@ register_control_plane_tools(server, get_client, get_integration_manager)
 # ---------- VM/LXC Notes Management ----------
 
 
-register_notes_tools(server, get_client, require_confirm)
+register_notes_tools(server, get_client)
 
 
 def main(argv: Optional[List[str]] = None) -> None:

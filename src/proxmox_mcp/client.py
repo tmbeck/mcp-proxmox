@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import ssl
 import time
 import ipaddress
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -15,6 +17,30 @@ from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 VM_DISK_PREFIXES = ("ide", "sata", "scsi", "virtio")
 VM_UNUSED_DISK_PREFIX = "unused"
+TESTED_PROXMOX_VE_VERSION = "9.1.6"
+TESTED_PROXMOX_VE_SERIES = (9, 1)
+TESTED_PROXMOX_VE_SERIES_LABEL = "9.1.x"
+_PROXMOX_VERSION_PATTERN = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)(?:\.\d+)?$")
+
+
+@dataclass(frozen=True)
+class ProxmoxVersionCompatibility:
+    detected_version: Optional[str]
+    compatible: Optional[bool]
+
+
+_VERSION_COMPATIBILITY_CACHE: Dict[Tuple[str, str], ProxmoxVersionCompatibility] = {}
+
+
+def _parse_proxmox_version_series(version: Optional[str]) -> Optional[Tuple[int, int]]:
+    if not version:
+        return None
+
+    match = _PROXMOX_VERSION_PATTERN.match(version.strip())
+    if not match:
+        return None
+
+    return int(match.group("major")), int(match.group("minor"))
 
 
 class _TLSHttpAdapter(HTTPAdapter):
@@ -107,6 +133,42 @@ class ProxmoxClient:
         return self._api
 
     # -------- Core discovery --------
+    def get_version_info(self) -> Dict[str, Any]:
+        return self._api.version.get()
+
+    def get_version_compatibility(self) -> ProxmoxVersionCompatibility:
+        cache_key = (self.base_url, self.token_id)
+        cached = _VERSION_COMPATIBILITY_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            version_info = self.get_version_info()
+        except Exception:
+            compatibility = ProxmoxVersionCompatibility(
+                detected_version=None,
+                compatible=None,
+            )
+            _VERSION_COMPATIBILITY_CACHE[cache_key] = compatibility
+            return compatibility
+
+        detected_version = str(version_info.get("version") or "").strip() or None
+        detected_series = _parse_proxmox_version_series(detected_version)
+
+        if detected_series is None:
+            compatibility = ProxmoxVersionCompatibility(
+                detected_version=detected_version,
+                compatible=None,
+            )
+        else:
+            compatibility = ProxmoxVersionCompatibility(
+                detected_version=detected_version,
+                compatible=detected_series == TESTED_PROXMOX_VE_SERIES,
+            )
+
+        _VERSION_COMPATIBILITY_CACHE[cache_key] = compatibility
+        return compatibility
+
     def list_nodes(self) -> List[Dict[str, Any]]:
         return self._api.nodes.get()
 
@@ -503,7 +565,7 @@ class ProxmoxClient:
     ) -> str:
         params: Dict[str, Any] = {}
         if force:
-            params["forceStop"] = 1
+            params["overrule-shutdown"] = 1
         if timeout is not None:
             params["timeout"] = int(timeout)
         return self._api.nodes(node).qemu(vmid).status.stop.post(**params)

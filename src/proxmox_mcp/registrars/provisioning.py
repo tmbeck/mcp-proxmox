@@ -24,7 +24,6 @@ from ..windows import (
 def register_provisioning_tools(
     server: FastMCP,
     get_client: Callable[[], Any],
-    require_confirm: Callable[[Optional[bool]], None],
 ) -> None:
     @server.tool("proxmox-list-os-templates")
     async def proxmox_list_os_templates(
@@ -62,7 +61,6 @@ def register_provisioning_tools(
         node: Optional[str] = None,
         storage: Optional[str] = None,
         verify_checksum: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Download OS template from official sources."""
@@ -77,7 +75,6 @@ def register_provisioning_tools(
                 f"Unsupported template: {template_name}. Supported: {list(CloudInitConfig.OS_TEMPLATES.keys())}"
             )
 
-        require_confirm(confirm)
         template_info = CloudInitConfig.OS_TEMPLATES[template_name]
         if dry_run:
             return {
@@ -109,7 +106,6 @@ def register_provisioning_tools(
         template: str = "ubuntu-22.04",
         cloudinit_config: Optional[Dict[str, Any]] = None,
         hardware: Optional[Dict[str, Any]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -123,7 +119,6 @@ def register_provisioning_tools(
         if vmid <= 0 or not name:
             raise ValueError("vmid > 0 and non-empty name are required")
 
-        require_confirm(confirm)
         hw_config = hardware or {}
         cores = hw_config.get("cores", 2)
         memory_mb = hw_config.get("memory_mb", 2048)
@@ -204,13 +199,11 @@ def register_provisioning_tools(
         commands: Optional[List[str | List[str]]] = None,
         network_config: Optional[Dict[str, Any]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Configure advanced CloudInit settings for VM."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
 
         if dry_run:
             return {
@@ -275,7 +268,6 @@ def register_provisioning_tools(
         hostname: str = "",
         ssh_keys: Optional[List[str]] = None,
         admin_user: str = "",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -292,7 +284,6 @@ def register_provisioning_tools(
         if not ssh_keys:
             raise ValueError("ssh_keys are required for preset configurations")
 
-        require_confirm(confirm)
         preset_configs = {
             "web-server": get_ubuntu_web_server_config,
             "docker-host": get_docker_host_config,
@@ -356,7 +347,6 @@ def register_provisioning_tools(
         version: str,
         node: Optional[str] = None,
         storage: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Download RHCOS image from official Red Hat sources."""
@@ -370,7 +360,6 @@ def register_provisioning_tools(
                 f"Unsupported RHCOS version: {version}. Supported: {list(IgnitionConfig.RHCOS_STREAMS.keys())}"
             )
 
-        require_confirm(confirm)
         stream_info = IgnitionConfig.RHCOS_STREAMS[version]
         if dry_run:
             return {
@@ -401,7 +390,6 @@ def register_provisioning_tools(
         rhcos_version: str = "4.14",
         ignition_config: Optional[Dict[str, Any]] = None,
         hardware: Optional[Dict[str, Any]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -415,7 +403,6 @@ def register_provisioning_tools(
         if vmid <= 0 or not name:
             raise ValueError("vmid > 0 and non-empty name are required")
 
-        require_confirm(confirm)
         hw_config = hardware or {}
         cores = hw_config.get("cores", 4)
         memory_mb = hw_config.get("memory_mb", 8192)
@@ -552,7 +539,6 @@ def register_provisioning_tools(
         domain_config: Optional[Dict[str, Any]] = None,
         applications: Optional[List[Dict[str, Any]]] = None,
         license_key: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 1800,
@@ -568,7 +554,6 @@ def register_provisioning_tools(
         if not admin_password:
             raise ValueError("admin_password is required")
 
-        require_confirm(confirm)
         hw_config = hardware or {}
         cores = hw_config.get("cores", 4)
         memory_mb = hw_config.get("memory_mb", 4096)
@@ -643,7 +628,6 @@ def register_provisioning_tools(
         admin_password: str = "",
         domain: Optional[str] = None,
         license_key: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 1800,
@@ -659,7 +643,6 @@ def register_provisioning_tools(
         if not admin_password:
             raise ValueError("admin_password is required")
 
-        require_confirm(confirm)
         preset_configs = {
             "web-server": get_windows_web_server_config,
             "domain-controller": get_windows_domain_controller_config,
@@ -727,7 +710,6 @@ def register_provisioning_tools(
         username: str = "",
         password: str = "",
         ou_path: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Join Windows VM to Active Directory domain."""
@@ -735,7 +717,6 @@ def register_provisioning_tools(
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not domain or not username or not password:
             raise ValueError("domain, username, and password are required")
-        require_confirm(confirm)
 
         if dry_run:
             return {
@@ -761,7 +742,6 @@ def register_provisioning_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         applications: Optional[List[Dict[str, Any]]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Install applications on Windows VM."""
@@ -770,7 +750,6 @@ def register_provisioning_tools(
         applications = applications or []
         if not applications:
             raise ValueError("applications list is required")
-        require_confirm(confirm)
 
         if dry_run:
             return {
@@ -792,13 +771,11 @@ def register_provisioning_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         enable: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Configure Windows Remote Desktop Protocol."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -825,14 +802,12 @@ def register_provisioning_tools(
         node: Optional[str] = None,
         command: str = "",
         shell: str = "powershell",
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Execute command on Windows VM via QEMU guest agent."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not command:
             raise ValueError("command is required")
-        require_confirm(confirm)
         return client.execute_windows_command(vm_node, vm_vmid, command, shell)
 
     @server.tool("proxmox-windows-services")
@@ -859,10 +834,8 @@ def register_provisioning_tools(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
         node: Optional[str] = None,
-        confirm: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Install Windows updates via PowerShell."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         return client.install_windows_updates(vm_node, vm_vmid)

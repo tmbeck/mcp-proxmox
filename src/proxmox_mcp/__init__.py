@@ -5,12 +5,11 @@ from __future__ import annotations
 from importlib import import_module
 
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 _EXPORTS = {
     "ProxmoxClient": ("client", "ProxmoxClient"),
     "server": ("server", "server"),
-    "require_confirm": ("utils", "require_confirm"),
     "format_size": ("utils", "format_size"),
     "ClusterConfig": ("utils", "ClusterConfig"),
     "ClusterRegistryConfig": ("utils", "ClusterRegistryConfig"),

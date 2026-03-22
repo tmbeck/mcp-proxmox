@@ -112,8 +112,7 @@ result = await proxmox_vm_notes_update(
     vmid=341,
     content=html_content,
     validate=True,
-    backup=True,
-    confirm=True
+    backup=True
 )
 ```
 
@@ -137,7 +136,6 @@ result = await proxmox_notes_template(
 result = await proxmox_vm_notes_remove(
     vmid=341,
     backup=True,  # Saves backup before removal
-    confirm=True
 )
 # Returns: success status and backup of removed notes
 ```

@@ -8,7 +8,6 @@ from mcp.server.fastmcp import FastMCP
 def register_core_admin_tools(
     server: FastMCP,
     get_client: Callable[[], Any],
-    require_confirm: Callable[[Optional[bool]], None],
 ) -> None:
     @server.tool("proxmox-vm-metrics")
     async def proxmox_vm_metrics(
@@ -43,13 +42,11 @@ def register_core_admin_tools(
     async def proxmox_create_pool(
         poolid: str,
         comment: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         if not poolid:
             raise ValueError("poolid is required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -61,13 +58,11 @@ def register_core_admin_tools(
     @server.tool("proxmox-delete-pool")
     async def proxmox_delete_pool(
         poolid: str,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         if not poolid:
             raise ValueError("poolid is required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -83,7 +78,6 @@ def register_core_admin_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         type_: str = "qemu",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -93,7 +87,6 @@ def register_core_admin_tools(
             rid, rnode, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         else:
             rid, rnode, _ = client.resolve_lxc(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -114,7 +107,6 @@ def register_core_admin_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         type_: str = "qemu",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -124,7 +116,6 @@ def register_core_admin_tools(
             rid, rnode, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         else:
             rid, rnode, _ = client.resolve_lxc(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -155,13 +146,11 @@ def register_core_admin_tools(
         users: Optional[str] = None,
         groups: Optional[str] = None,
         propagate: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         if not path or not roles:
             raise ValueError("path and roles are required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,

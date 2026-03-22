@@ -9,7 +9,6 @@ from mcp.server.fastmcp import FastMCP
 def register_core_compute_tools(
     server: FastMCP,
     get_client: Callable[[], Any],
-    require_confirm: Callable[[Optional[bool]], None],
 ) -> None:
     @server.tool("proxmox-list-nodes")
     async def proxmox_list_nodes() -> List[Dict[str, Any]]:
@@ -116,7 +115,6 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         storage: Optional[str] = None,
         full: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -126,7 +124,6 @@ def register_core_compute_tools(
         node = source_node or client.default_node
         if not node:
             raise ValueError("source_node is required (or set PROXMOX_DEFAULT_NODE)")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -168,7 +165,6 @@ def register_core_compute_tools(
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
         iso: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -180,7 +176,6 @@ def register_core_compute_tools(
             raise ValueError("node is required (or set PROXMOX_DEFAULT_NODE)")
         if vmid <= 0 or not name:
             raise ValueError("vmid > 0 and non-empty name are required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -221,15 +216,14 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         purge: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 600,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
+        """Permanently delete a VM and optionally purge its owned resources."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -349,7 +343,6 @@ def register_core_compute_tools(
         node: Optional[str] = None,
         disk: str = "scsi0",
         grow_gb: int = 0,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = True,
         timeout: int = 900,
@@ -357,7 +350,6 @@ def register_core_compute_tools(
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if grow_gb <= 0:
             raise ValueError("grow_gb must be > 0")
         if dry_run:
@@ -385,7 +377,6 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 600,
@@ -397,7 +388,6 @@ def register_core_compute_tools(
                 "params is required and must contain whitelisted config keys"
             )
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -426,7 +416,6 @@ def register_core_compute_tools(
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
         net_ip: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = True,
         timeout: int = 900,
@@ -438,7 +427,6 @@ def register_core_compute_tools(
             raise ValueError("node is required (or set PROXMOX_DEFAULT_NODE)")
         if vmid <= 0 or not hostname or not ostemplate:
             raise ValueError("vmid, hostname, ostemplate are required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -481,15 +469,14 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         purge: bool = True,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 600,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
+        """Permanently delete an LXC container and optionally purge its owned resources."""
         client = get_client()
         ct_vmid, ct_node, _ = client.resolve_lxc(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -551,7 +538,6 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 600,
@@ -563,7 +549,6 @@ def register_core_compute_tools(
                 "params is required and must contain allowed LXC config keys"
             )
         ct_vmid, ct_node, _ = client.resolve_lxc(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -589,7 +574,6 @@ def register_core_compute_tools(
         sshkeys: Optional[str] = None,
         ciuser: Optional[str] = None,
         cipassword: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -607,7 +591,6 @@ def register_core_compute_tools(
             raise ValueError(
                 "Provide at least one of: ipconfig0, sshkeys, ciuser, cipassword"
             )
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -624,7 +607,6 @@ def register_core_compute_tools(
         bridge: Optional[str] = None,
         model: str = "virtio",
         vlan: Optional[int] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -632,7 +614,6 @@ def register_core_compute_tools(
         bridge_id = bridge or client.default_bridge
         if not bridge_id:
             raise ValueError("bridge is required (or set PROXMOX_DEFAULT_BRIDGE)")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -655,12 +636,10 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         slot: int = 0,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -686,14 +665,12 @@ def register_core_compute_tools(
         node: Optional[str] = None,
         enable: Optional[bool] = None,
         rules: Optional[List[Dict[str, Any]]] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if enable is None and not rules:
             raise ValueError("Provide enable and/or rules")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -735,12 +712,10 @@ def register_core_compute_tools(
         format: Optional[str] = None,
         ssd: bool = False,
         cache: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -778,17 +753,16 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         mode: str = "detach",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 600,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
+        """Detach a disk, or permanently delete its backing volume with `mode="delete-volume"`."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if mode not in {"detach", "delete-volume"}:
             raise ValueError("mode must be 'detach' or 'delete-volume'")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -832,7 +806,6 @@ def register_core_compute_tools(
         node: Optional[str] = None,
         storage: Optional[str] = None,
         file_path: str = "",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -842,7 +815,6 @@ def register_core_compute_tools(
             raise ValueError("node and storage are required (or set defaults)")
         if not os.path.isfile(file_path):
             raise ValueError(f"file not found: {file_path}")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -861,7 +833,6 @@ def register_core_compute_tools(
         node: Optional[str] = None,
         storage: Optional[str] = None,
         file_path: str = "",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -871,7 +842,6 @@ def register_core_compute_tools(
             raise ValueError("node and storage are required (or set defaults)")
         if not os.path.isfile(file_path):
             raise ValueError(f"file not found: {file_path}")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -890,12 +860,10 @@ def register_core_compute_tools(
         vmid: Optional[int] = None,
         name: Optional[str] = None,
         node: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -923,14 +891,12 @@ def register_core_compute_tools(
         snapname: str = "",
         description: Optional[str] = None,
         vmstate: bool = False,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not snapname:
             raise ValueError("snapname is required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -954,14 +920,13 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         snapname: str = "",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
+        """Permanently delete a snapshot and its recoverable point-in-time state."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not snapname:
             raise ValueError("snapname is required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -977,17 +942,16 @@ def register_core_compute_tools(
         name: Optional[str] = None,
         node: Optional[str] = None,
         snapname: str = "",
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = True,
         timeout: int = 900,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
+        """Roll back to a snapshot and discard guest state created after that snapshot."""
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
         if not snapname:
             raise ValueError("snapname is required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -1010,7 +974,6 @@ def register_core_compute_tools(
         mode: str = "snapshot",
         compress: str = "zstd",
         storage: Optional[str] = None,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = True,
         timeout: int = 3600,
@@ -1018,7 +981,6 @@ def register_core_compute_tools(
     ) -> Dict[str, Any]:
         client = get_client()
         vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,
@@ -1052,19 +1014,18 @@ def register_core_compute_tools(
         archive: str = "",
         storage: Optional[str] = None,
         force: bool = False,
-        confirm: Optional[bool] = None,
         dry_run: bool = False,
         wait: bool = True,
         timeout: int = 3600,
         poll_interval: float = 5.0,
     ) -> Dict[str, Any]:
+        """Restore a backup archive into a VMID; `force=true` can overwrite existing VM state."""
         client = get_client()
         node_id = node or client.default_node
         if not node_id:
             raise ValueError("node is required (or set PROXMOX_DEFAULT_NODE)")
         if vmid <= 0 or not archive:
             raise ValueError("vmid and archive are required")
-        require_confirm(confirm)
         if dry_run:
             return {
                 "dry_run": True,

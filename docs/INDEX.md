@@ -24,7 +24,7 @@
    - Reserved-VMID disposable test workflow
    - Guardrails for avoiding existing VMs/storage
    - Core clone/start/guest/disk/cleanup sequence
-   - Destructive confirmation checkpoints
+   - Destructive action checkpoints
 
 4. **docs/FINAL_REPORT.md** (8.3 KB)
    - Comprehensive executive summary

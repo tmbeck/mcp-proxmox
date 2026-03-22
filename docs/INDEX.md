@@ -118,12 +118,12 @@ INDEX.md (This File)
 
 ## �� Testing & Verification Scripts
 
-### verify_mcp_tools.py (3.2 KB)
+### scripts/legacy/verify_mcp_tools.py (3.2 KB)
 **Purpose**: Verify that MCP server tools are working
 
 **Usage**:
 ```bash
-python verify_mcp_tools.py
+python scripts/legacy/verify_mcp_tools.py
 ```
 
 **Tests**:
@@ -134,12 +134,12 @@ python verify_mcp_tools.py
 
 **Expected Output**: All tests should show ✅ SUCCESS
 
-### test_resources.py (5.0 KB)
+### scripts/test_resources.py (5.0 KB)
 **Purpose**: Discover and display all resources from both clusters
 
 **Usage**:
 ```bash
-python test_resources.py
+python scripts/test_resources.py
 ```
 
 **Output**:
@@ -165,10 +165,10 @@ python -m proxmox_mcp.server
 ### Run Tests
 ```bash
 # Test MCP tools
-python verify_mcp_tools.py
+python scripts/legacy/verify_mcp_tools.py
 
 # Discover resources
-python test_resources.py
+python scripts/test_resources.py
 ```
 
 ### Check Configuration
@@ -301,10 +301,10 @@ Complete verification checklist showing all tasks completed, tests passed, and m
 ### INDEX.md (This File)
 Navigation guide and quick reference for all documentation.
 
-### verify_mcp_tools.py
+### scripts/legacy/verify_mcp_tools.py
 Automated verification script that tests all MCP tools to ensure they're working correctly.
 
-### test_resources.py
+### scripts/test_resources.py
 Resource discovery script that lists all nodes, VMs, containers, and storage from both clusters.
 
 ---
@@ -330,9 +330,9 @@ Resource discovery script that lists all nodes, VMs, containers, and storage fro
 
 **Beginner**: Start with RESOURCES_SUMMARY.md, then FINAL_REPORT.md
 
-**Intermediate**: Read MCP_SERVER_START_GUIDE.md, run verify_mcp_tools.py
+**Intermediate**: Read MCP_SERVER_START_GUIDE.md, run scripts/legacy/verify_mcp_tools.py
 
-**Advanced**: Review DEPLOYMENT_CHECKLIST.md, explore test_resources.py
+**Advanced**: Review DEPLOYMENT_CHECKLIST.md, explore scripts/test_resources.py
 
 **Integration**: Follow instructions in MCP_SERVER_START_GUIDE.md
 
@@ -363,7 +363,7 @@ cat .env | grep PROXMOX_TOKEN
 **Server not responding**
 ```bash
 # Run verification script
-python verify_mcp_tools.py
+python scripts/legacy/verify_mcp_tools.py
 ```
 
 ---
@@ -389,7 +389,7 @@ python verify_mcp_tools.py
 1. **First**: FINAL_REPORT.md (5 min read)
 2. **Second**: RESOURCES_SUMMARY.md (3 min read)
 3. **Third**: MCP_SERVER_START_GUIDE.md (5 min read)
-4. **Fourth**: Run verify_mcp_tools.py (1 min execution)
+4. **Fourth**: Run scripts/legacy/verify_mcp_tools.py (1 min execution)
 5. **Fifth**: DEPLOYMENT_CHECKLIST.md (review as needed)
 
 ---

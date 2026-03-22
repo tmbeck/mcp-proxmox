@@ -10,14 +10,15 @@ import json
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+
 
 def verify_proxmox_notes_capabilities():
     """Verify what Proxmox supports for VM/LXC notes"""
-    
+
     print("🔍 Proxmox VM/LXC Notes Management - Verification Report")
     print("=" * 70)
-    
+
     # 1. Field Availability
     print("\n📋 1. FIELD AVAILABILITY")
     print("-" * 50)
@@ -25,7 +26,7 @@ def verify_proxmox_notes_capabilities():
     print("✅ Proxmox LXC: 'description' field available")
     print("✅ Field Type: String (text)")
     print("✅ Access: Via Proxmox API and CLI (qm/pct)")
-    
+
     # 2. Format Support
     print("\n📝 2. FORMAT SUPPORT")
     print("-" * 50)
@@ -33,7 +34,7 @@ def verify_proxmox_notes_capabilities():
     print("✅ Markdown: Supported (stored as text, rendered by UI)")
     print("✅ HTML: Supported (stored as text, rendered by Proxmox web UI)")
     print("⚠️  Note: Proxmox web UI renders HTML in description field")
-    
+
     # 3. Storage Mechanism
     print("\n💾 3. STORAGE MECHANISM")
     print("-" * 50)
@@ -42,7 +43,7 @@ def verify_proxmox_notes_capabilities():
     print("✅ Path (LXC): /etc/pve/lxc/<ctid>.conf")
     print("✅ Format: Key-value pair (description: <content>)")
     print("✅ Persistence: Permanent (stored in cluster filesystem)")
-    
+
     # 4. Security Considerations
     print("\n🔐 4. SECURITY CONSIDERATIONS")
     print("-" * 50)
@@ -69,7 +70,7 @@ def verify_proxmox_notes_capabilities():
     print("   - Private keys")
     print("   - Tokens")
     print("   - Any sensitive credentials")
-    
+
     # 5. Alternative for Secrets
     print("\n🔒 5. RECOMMENDED ALTERNATIVES FOR SECRETS")
     print("-" * 50)
@@ -83,7 +84,7 @@ def verify_proxmox_notes_capabilities():
     print("   - Store secrets in secret-store")
     print("   - Store secret reference in notes")
     print("   - Example: 'Password stored in secret: vm-341-root-pass'")
-    
+
     # 6. HTML/Markdown Capabilities
     print("\n🎨 6. HTML/MARKDOWN RENDERING")
     print("-" * 50)
@@ -101,7 +102,7 @@ def verify_proxmox_notes_capabilities():
     print("   - Copy-to-clipboard: Implementable in MCP tool")
     print("   - Click-to-reveal: Implementable in MCP tool")
     print("   - NOT native in Proxmox UI")
-    
+
     # 7. Proposed Implementation
     print("\n🛠️  7. PROPOSED IMPLEMENTATION")
     print("-" * 50)
@@ -137,7 +138,7 @@ def verify_proxmox_notes_capabilities():
     print("   - Generate note templates")
     print("   - HTML/Markdown formats")
     print("   - Include secret references")
-    
+
     # 8. Security Best Practices
     print("\n🛡️  8. SECURITY BEST PRACTICES")
     print("-" * 50)
@@ -154,13 +155,13 @@ def verify_proxmox_notes_capabilities():
     print("   - Store private keys in notes")
     print("   - Assume notes are encrypted")
     print("   - Use notes for access control")
-    
+
     # 9. Example Use Cases
     print("\n💡 9. EXAMPLE USE CASES")
     print("-" * 50)
     print()
     print("✅ Good Example (HTML with secret reference):")
-    print('''
+    print("""
 <div style="font-family: monospace;">
   <h3>VM: Production Web Server</h3>
   <p><strong>Owner:</strong> DevOps Team</p>
@@ -173,10 +174,10 @@ def verify_proxmox_notes_capabilities():
   </p>
   <p><strong>Last Updated:</strong> 2025-01-15</p>
 </div>
-''')
+""")
     print()
     print("✅ Good Example (Markdown with secret reference):")
-    print('''
+    print("""
 # VM: Production Web Server
 
 **Owner:** DevOps Team  
@@ -189,8 +190,8 @@ def verify_proxmox_notes_capabilities():
 ## Maintenance Schedule
 - Weekly updates: Sunday 2 AM UTC
 - Backup: Daily at midnight
-''')
-    
+""")
+
     # 10. Recommendations
     print("\n✅ 10. FINAL RECOMMENDATIONS")
     print("-" * 50)
@@ -217,7 +218,7 @@ def verify_proxmox_notes_capabilities():
     print("   - Click-to-reveal for secret IDs")
     print("   - Markdown preview")
     print("   - HTML rendering")
-    
+
     print("\n" + "=" * 70)
     print("✅ VERIFICATION COMPLETE")
     print()
@@ -229,11 +230,11 @@ def verify_proxmox_notes_capabilities():
     print()
     print("🎯 NEXT STEPS:")
     print("   1. Review this verification report")
-    print("   2. Run userinput.py for user feedback")
+    print("   2. Run scripts/dev/userinput.py for user feedback")
     print("   3. Create detailed specification")
     print("   4. Implement MCP tools")
     print("=" * 70)
-    
+
     return {
         "safe_to_implement": True,
         "supports_html": True,
@@ -247,20 +248,21 @@ def verify_proxmox_notes_capabilities():
             "proxmox-lxc-notes-read",
             "proxmox-lxc-notes-update",
             "proxmox-lxc-notes-remove",
-            "proxmox-notes-template"
-        ]
+            "proxmox-notes-template",
+        ],
     }
+
 
 if __name__ == "__main__":
     result = verify_proxmox_notes_capabilities()
-    
+
     # Save verification result
-    output_file = Path("notes_verification_result.json")
+    output_file = Path(__file__).resolve().parent / "notes_verification_result.json"
     with open(output_file, "w") as f:
         json.dump(result, f, indent=2)
-    
+
     print(f"\n💾 Verification result saved to: {output_file}")
-    print("\n🔄 Please run: python userinput.py")
+    print("\n🔄 Please run: python scripts/dev/userinput.py")
     print("   to provide feedback and determine next steps.")
-    
+
     sys.exit(0)

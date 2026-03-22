@@ -329,6 +329,7 @@ Notes:
 - `uv run pytest` runs the stable automated suite.
 - Stable automated tests live under `tests/`.
 - Manual/integration-oriented scripts such as `scripts/test_resources.py` and `scripts/test_multi_cluster_server.py` are intentionally excluded from pytest collection; run them directly when you want live-environment checks.
+- Legacy/one-off maintenance helpers now live under `scripts/dev/` and `scripts/legacy/` instead of the repo root.
 
 ## License
 

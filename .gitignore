@@ -182,6 +182,7 @@ Desktop.ini
 logs/
 
 # Temporary files
+.tmp
 *.tmp
 *.temp
 .tmp/

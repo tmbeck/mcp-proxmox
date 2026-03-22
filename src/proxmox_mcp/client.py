@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import ssl
 import time
+import ipaddress
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -840,7 +841,56 @@ class ProxmoxClient:
             time.sleep(poll_interval)
 
     def qga_network_get_interfaces(self, node: str, vmid: int) -> Dict[str, Any]:
-        return self._api.nodes(node).qemu(vmid).agent["network-get-interfaces"].get()
+        return self._api.nodes(node).qemu(vmid).agent("network-get-interfaces").get()
+
+    def get_vm_ipv4_addresses(self, node: str, vmid: int) -> List[str]:
+        interfaces = self.qga_network_get_interfaces(node, vmid)
+        interface_list: Any
+        if isinstance(interfaces, dict) and isinstance(interfaces.get("result"), list):
+            interface_list = interfaces.get("result")
+        elif isinstance(interfaces, list):
+            interface_list = interfaces
+        else:
+            interface_list = []
+
+        addresses: List[str] = []
+        for interface in interface_list:
+            for addr in interface.get("ip-addresses", []) or []:
+                if addr.get("ip-address-type") != "ipv4":
+                    continue
+                ip = addr.get("ip-address")
+                if not ip:
+                    continue
+                try:
+                    parsed = ipaddress.ip_address(ip)
+                except ValueError:
+                    continue
+                if parsed.is_loopback or parsed.is_link_local:
+                    continue
+                addresses.append(ip)
+
+        # Preserve order but de-duplicate
+        return list(dict.fromkeys(addresses))
+
+    def wait_for_vm_ip(
+        self, node: str, vmid: int, timeout: int = 300, poll_interval: float = 5.0
+    ) -> str:
+        start = time.time()
+        last_error: Optional[str] = None
+        while True:
+            try:
+                addresses = self.get_vm_ipv4_addresses(node, vmid)
+                if addresses:
+                    return addresses[0]
+            except Exception as exc:
+                last_error = str(exc)
+
+            if (time.time() - start) > timeout:
+                error_suffix = f" Last error: {last_error}" if last_error else ""
+                raise TimeoutError(
+                    f"VM {vmid} on node {node} did not report an IPv4 address within {timeout}s.{error_suffix}"
+                )
+            time.sleep(poll_interval)
 
     # -------- CloudInit and template management --------
     def create_cloudinit_vm(

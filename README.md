@@ -115,6 +115,7 @@ For layered shared deployment guidance, see `docs/CONTROL_PLANE_DEPLOYMENT.md`.
 
 If your main goal is direct VM/LXC management, template cloning, provisioning, snapshots/backups, and related guest operations, stay on the default `core` profile.
 For product validation workflows, prefer external SSH for in-guest install/test steps; see `docs/DISPOSABLE_VM_TEST_RECIPE.md`.
+For clone-based SSH access, the core server already supports injecting an externally generated public key with `proxmox-cloudinit-set` before first boot.
 
 Profile guide:
 

@@ -36,13 +36,18 @@ Target workflow:
 - A known template VM is available for cloning.
 - For full in-guest install/test steps, the template must support reliable external SSH access as `ubuntu`.
 - The template should already have your SSH public key installed, or the clone workflow should inject it via cloud-init.
-- For best reliability, prefer deterministic networking:
-  - static IP via cloud-init, or
-  - DHCP reservation tied to the cloned guest
+- The external test script should fetch the guest IP through this project by reading the address reported to Proxmox via QEMU guest agent.
 
 ## External SSH Reliability Notes
 
 For this recipe, guest operations are intentionally performed over external SSH rather than an MCP guest-exec helper.
+
+Key-management boundary:
+
+- the external test script generates a temporary SSH keypair
+- the MCP core server accepts the public key and applies it to the clone via cloud-init
+- the external test script uses the private key for SSH
+- the external test script deletes the temporary keypair after cleanup
 
 Recommended SSH assumptions:
 
@@ -62,6 +67,12 @@ Before product install/test steps, wait for cloud-init to settle if the guest us
 ```bash
 ssh ubuntu@<vm-ip> 'cloud-init status --wait'
 ```
+
+IP-discovery boundary:
+
+- the script should use the project client to query QEMU guest agent network data
+- the script should wait until the cloned VM reports an IPv4 address
+- that reported IPv4 address is then used for external SSH
 
 ## Current Known-Good Example
 
@@ -98,15 +109,17 @@ If your goal is product validation rather than a minimal MCP smoke test, use thi
 
 1. Clone template VM `8001`.
 2. The new VMID must be greater than `9000`.
-3. Start the VM and let it settle.
-4. Confirm you can obtain the guest IP and log in over external SSH as `ubuntu`.
-5. Attach `4` data disks of `40 GB` each.
-6. Detach one of those data disks.
-7. Attach a new `40 GB` data disk.
-8. Delete the detached disk.
-9. Verify the guest sees `4` attached data disks.
-10. Shut off the VM.
-11. Delete the disposable VM and its owned test disks.
+3. Generate a temporary SSH keypair outside the MCP server.
+4. Apply the public key to the clone with `proxmox-cloudinit-set` before first boot.
+5. Start the VM and let it settle.
+6. Confirm you can obtain the guest IP and log in over external SSH as `ubuntu`.
+7. Attach `4` data disks of `40 GB` each.
+8. Detach one of those data disks.
+9. Attach a new `40 GB` data disk.
+10. Delete the detached disk.
+11. Verify the guest sees `4` attached data disks.
+12. Shut off the VM.
+13. Delete the disposable VM and its owned test disks.
 
 Important clarification:
 
@@ -138,11 +151,31 @@ Expected result:
 
 ### 2. Start the disposable VM
 
+Before first boot, inject the externally generated public key via cloud-init.
+
 Example:
 
 ```json
 {
-  "vmid": 8100,
+  "vmid": 9100,
+  "ciuser": "ubuntu",
+  "sshkeys": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... disposable-test-key"
+}
+```
+
+Tool: `proxmox-cloudinit-set`
+
+Recommended timing:
+- run this after cloning
+- run it before the first start of the cloned VM
+
+### 3. Start the disposable VM
+
+Example:
+
+```json
+{
+  "vmid": 9100,
   "wait": true
 }
 ```
@@ -152,7 +185,7 @@ Tool: `proxmox-start-vm`
 Expected result:
 - start task completes with `exitstatus=OK`
 
-### 3. Verify guest access
+### 4. Verify guest access
 
 Example:
 
@@ -170,7 +203,7 @@ Stop if:
 - SSH login fails repeatedly
 - cloud-init never settles
 
-### 4. Install/test software in guest
+### 5. Install/test software in guest
 
 Example pattern:
 
@@ -181,7 +214,7 @@ ssh ubuntu@<vm-ip> 'sudo ./install.sh && ./run-tests.sh'
 Expected result:
 - exit code `0`
 
-### 5. Record baseline disk state
+### 6. Record baseline disk state
 
 Example:
 
@@ -197,7 +230,7 @@ Expected result:
 - active system disk only
 - no unexpected `unused_disks`
 
-### 6. Add a disposable data disk
+### 7. Add a disposable data disk
 
 Example:
 
@@ -217,7 +250,7 @@ Tool: `proxmox-vm-disk-add`
 Expected result:
 - returns a new device, for example `scsi0`
 
-### 7. Verify the guest sees the new disk
+### 8. Verify the guest sees the new disk
 
 Example:
 
@@ -228,7 +261,7 @@ ssh ubuntu@<vm-ip> 'udevadm settle || true; sleep 2; lsblk -J -o NAME,SIZE,TYPE,
 Expected result:
 - guest now shows an additional disk (for example `sda`)
 
-### 8. Detach the disk non-destructively
+### 9. Detach the disk non-destructively
 
 Example:
 
@@ -249,7 +282,7 @@ Expected result:
 - disk appears under `unused_disks`
 - guest returns to baseline disk count
 
-### 9. Optional destructive disk cleanup
+### 10. Optional destructive disk cleanup
 
 Only after explicit confirmation.
 
@@ -270,7 +303,7 @@ Tool: `proxmox-vm-disk-remove`
 Expected result:
 - unused test disk is deleted from storage
 
-### 10. Destroy the disposable VM
+### 11. Destroy the disposable VM
 
 Only after explicit confirmation.
 

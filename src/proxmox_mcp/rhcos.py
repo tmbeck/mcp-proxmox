@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import json
 import base64
-import hashlib
 import os
 import tempfile
-import yaml
-from typing import Any, Dict, List, Optional, Union
-from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
 import requests
 from jsonschema import validate, ValidationError
 
-from .utils import require_allowed_url
+from .utils import command_failure_message, require_allowed_url
 
 
 class IgnitionConfig:
@@ -263,16 +259,55 @@ WantedBy=multi-user.target
             ]
 
             try:
-                subprocess.run(cmd, check=True, capture_output=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                # Fallback to mkisofs
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as first_error:
                 cmd[0] = "mkisofs"
                 try:
-                    subprocess.run(cmd, check=True, capture_output=True)
-                except (subprocess.CalledProcessError, FileNotFoundError):
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as second_error:
                     raise RuntimeError(
-                        "Neither genisoimage nor mkisofs available for ISO creation"
-                    )
+                        command_failure_message(
+                            cmd,
+                            action="creating an ignition ISO",
+                            likely_cause="both ISO creation commands exited with errors",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=second_error.stderr or first_error.stderr,
+                        )
+                    ) from second_error
+                except FileNotFoundError as error:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating an ignition ISO",
+                            likely_cause="`mkisofs` is not installed and `genisoimage` already failed",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=str(error),
+                        )
+                    ) from error
+            except FileNotFoundError as first_missing:
+                cmd[0] = "mkisofs"
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as error:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating an ignition ISO",
+                            likely_cause="`genisoimage` is not installed and `mkisofs` returned an error",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=error.stderr,
+                        )
+                    ) from error
+                except FileNotFoundError as second_missing:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating an ignition ISO",
+                            likely_cause="neither `genisoimage` nor `mkisofs` is installed",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=f"{first_missing}; {second_missing}",
+                        )
+                    ) from second_missing
 
         return output_path
 
@@ -376,7 +411,7 @@ class RHCOSProvisioner:
         ignition_config.create_iso(iso_path, label="ignition")
 
         # Upload ISO and attach as IDE drive
-        iso_upid = self.client.upload_iso(node, storage_id, iso_path)
+        self.client.upload_iso(node, storage_id, iso_path)
         iso_volid = f"{storage_id}:iso/ignition-{vmid}.iso"
 
         # Attach Ignition ISO to IDE2
@@ -429,7 +464,7 @@ WantedBy=multi-user.target
         )
 
         # Add bootstrap script
-        bootstrap_script = f"""#!/bin/bash
+        bootstrap_script = """#!/bin/bash
 set -euo pipefail
 
 echo "Starting OpenShift bootstrap process..."
@@ -505,222 +540,3 @@ chmod +x /tmp/openshift-install
             }
 
         return config
-
-
-class OpenShiftInstaller:
-    """OpenShift cluster installation orchestrator."""
-
-    def __init__(self, proxmox_client):
-        """Initialize with Proxmox client."""
-        self.client = proxmox_client
-        self.rhcos_provisioner = RHCOSProvisioner(proxmox_client)
-
-    def create_install_config(
-        self,
-        cluster_name: str,
-        base_domain: str,
-        ssh_key: str,
-        pull_secret: Dict[str, Any],
-        master_count: int = 3,
-        worker_count: int = 2,
-        network_cidr: str = "10.0.0.0/16",
-        service_cidr: str = "172.30.0.0/16",
-    ) -> Dict[str, Any]:
-        """Create OpenShift install-config.yaml content."""
-        install_config = {
-            "apiVersion": "v1",
-            "baseDomain": base_domain,
-            "metadata": {"name": cluster_name},
-            "compute": [
-                {
-                    "hyperthreading": "Enabled",
-                    "name": "worker",
-                    "replicas": worker_count,
-                    "platform": {},
-                }
-            ],
-            "controlPlane": {
-                "hyperthreading": "Enabled",
-                "name": "master",
-                "replicas": master_count,
-                "platform": {},
-            },
-            "networking": {
-                "clusterNetwork": [{"cidr": network_cidr, "hostPrefix": 23}],
-                "networkType": "OVNKubernetes",
-                "serviceNetwork": [service_cidr],
-            },
-            "platform": {"none": {}},
-            "pullSecret": json.dumps(pull_secret),
-            "sshKey": ssh_key.strip(),
-        }
-
-        return install_config
-
-    def deploy_cluster(
-        self,
-        cluster_config: Dict[str, Any],
-        node: str,
-        storage: str,
-        bridge: str,
-        base_vmid: int = 500,
-    ) -> Dict[str, Any]:
-        """Deploy complete OpenShift cluster."""
-        cluster_name = cluster_config["cluster_name"]
-        base_domain = cluster_config["base_domain"]
-        ssh_key = cluster_config["ssh_key"]
-        pull_secret = cluster_config["pull_secret"]
-        rhcos_version = cluster_config.get("rhcos_version", "4.14")
-
-        master_count = cluster_config.get("master_count", 3)
-        worker_count = cluster_config.get("worker_count", 2)
-
-        deployment_result = {
-            "cluster_name": cluster_name,
-            "base_domain": base_domain,
-            "nodes": [],
-            "upids": [],
-        }
-
-        # Create bootstrap node
-        bootstrap_config = self.rhcos_provisioner.create_bootstrap_config(
-            cluster_name, base_domain, ssh_key, pull_secret
-        )
-
-        bootstrap_upid = self.rhcos_provisioner.create_rhcos_vm(
-            node=node,
-            vmid=base_vmid,
-            name=f"{cluster_name}-bootstrap",
-            rhcos_version=rhcos_version,
-            ignition_config=bootstrap_config,
-            hardware={"cores": 4, "memory_mb": 8192, "disk_gb": 50},
-            storage=storage,
-            bridge=bridge,
-        )
-
-        deployment_result["nodes"].append(
-            {
-                "type": "bootstrap",
-                "vmid": base_vmid,
-                "name": f"{cluster_name}-bootstrap",
-                "upid": bootstrap_upid,
-            }
-        )
-        deployment_result["upids"].append(bootstrap_upid)
-
-        # Create master nodes
-        for i in range(master_count):
-            vmid = base_vmid + 1 + i
-            master_config = self.rhcos_provisioner.create_master_config(
-                cluster_name, base_domain, i, ssh_key, pull_secret
-            )
-
-            master_upid = self.rhcos_provisioner.create_rhcos_vm(
-                node=node,
-                vmid=vmid,
-                name=f"{cluster_name}-master-{i}",
-                rhcos_version=rhcos_version,
-                ignition_config=master_config,
-                hardware={"cores": 4, "memory_mb": 8192, "disk_gb": 50},
-                storage=storage,
-                bridge=bridge,
-            )
-
-            deployment_result["nodes"].append(
-                {
-                    "type": "master",
-                    "vmid": vmid,
-                    "name": f"{cluster_name}-master-{i}",
-                    "upid": master_upid,
-                }
-            )
-            deployment_result["upids"].append(master_upid)
-
-        # Create worker nodes
-        for i in range(worker_count):
-            vmid = base_vmid + 1 + master_count + i
-            worker_config = self.rhcos_provisioner.create_worker_config(
-                cluster_name, base_domain, i, ssh_key, pull_secret
-            )
-
-            worker_upid = self.rhcos_provisioner.create_rhcos_vm(
-                node=node,
-                vmid=vmid,
-                name=f"{cluster_name}-worker-{i}",
-                rhcos_version=rhcos_version,
-                ignition_config=worker_config,
-                hardware={"cores": 2, "memory_mb": 4096, "disk_gb": 30},
-                storage=storage,
-                bridge=bridge,
-            )
-
-            deployment_result["nodes"].append(
-                {
-                    "type": "worker",
-                    "vmid": vmid,
-                    "name": f"{cluster_name}-worker-{i}",
-                    "upid": worker_upid,
-                }
-            )
-            deployment_result["upids"].append(worker_upid)
-
-        return deployment_result
-
-    def deploy_single_node_cluster(
-        self,
-        cluster_config: Dict[str, Any],
-        node: str,
-        storage: str,
-        bridge: str,
-        vmid: int = 600,
-    ) -> Dict[str, Any]:
-        """Deploy OpenShift Single Node Openshift (SNO) cluster."""
-        cluster_name = cluster_config["cluster_name"]
-        base_domain = cluster_config["base_domain"]
-        ssh_key = cluster_config["ssh_key"]
-        pull_secret = cluster_config["pull_secret"]
-        rhcos_version = cluster_config.get("rhcos_version", "4.14")
-
-        # Create SNO-specific Ignition config
-        config = IgnitionConfig()
-        config.add_user("core", [ssh_key], groups=["sudo", "docker"])
-        config.set_hostname(f"sno.{cluster_name}.{base_domain}")
-        config.add_pull_secret(pull_secret)
-
-        # Add SNO-specific bootstrap
-        sno_service = """
-[Unit]
-Description=OpenShift Single Node
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/sno-bootstrap.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-"""
-        config.add_systemd_unit("openshift-sno.service", sno_service, enabled=True)
-
-        # Create VM
-        upid = self.rhcos_provisioner.create_rhcos_vm(
-            node=node,
-            vmid=vmid,
-            name=f"{cluster_name}-sno",
-            rhcos_version=rhcos_version,
-            ignition_config=config,
-            hardware={"cores": 8, "memory_mb": 16384, "disk_gb": 100},
-            storage=storage,
-            bridge=bridge,
-        )
-
-        return {
-            "cluster_name": cluster_name,
-            "deployment_type": "single-node",
-            "vmid": vmid,
-            "name": f"{cluster_name}-sno",
-            "upid": upid,
-            "console_url": f"https://console-openshift-console.apps.sno.{cluster_name}.{base_domain}",
-        }

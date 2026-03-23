@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
+import shlex
 import time
-import subprocess
-import asyncio
 import ipaddress
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 
@@ -356,57 +355,27 @@ def format_size(size_bytes: int) -> str:
         return f"{size_value:.1f} {size_names[i]}"
 
 
-async def run_command(
-    cmd: list[str] | str,
-    input_data: Optional[str] = None,
-    shell: bool = False,
-    cwd: Optional[str] = None,
-    env: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
-    """Run a command asynchronously and return the result."""
-    try:
-        if shell:
-            if not isinstance(cmd, str):
-                raise ValueError("When shell=True, cmd must be a single string")
-            process = await asyncio.create_subprocess_shell(
-                cmd,
-                stdin=subprocess.PIPE if input_data else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=cwd,
-                env=env,
-            )
-        else:
-            if not isinstance(cmd, list):
-                raise ValueError("When shell=False, cmd must be a list of arguments")
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=subprocess.PIPE if input_data else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=cwd,
-                env=env,
-            )
-
-        stdout, stderr = await process.communicate(
-            input=input_data.encode() if input_data else None
-        )
-
-        return {
-            "return_code": process.returncode,
-            "stdout": stdout.decode() if stdout else "",
-            "stderr": stderr.decode() if stderr else "",
-            "command": cmd,
-        }
-
-    except Exception as e:
-        return {
-            "return_code": -1,
-            "stdout": "",
-            "stderr": str(e),
-            "command": cmd,
-            "error": str(e),
-        }
+def command_failure_message(
+    command: list[str] | str,
+    *,
+    action: str,
+    likely_cause: str,
+    try_next: str,
+    stderr: Optional[str] = None,
+) -> str:
+    """Build a caller-facing command failure message with a concrete next step."""
+    rendered_command = command if isinstance(command, str) else shlex.join(command)
+    message = (
+        f"Command failed while {action}. "
+        f"Command: {rendered_command}. "
+        f"Likely cause: {likely_cause}. "
+        f"Try next: {try_next}."
+    )
+    if stderr:
+        clean_stderr = stderr.strip()
+        if clean_stderr:
+            message += f" stderr: {clean_stderr}"
+    return message
 
 
 def format_error(

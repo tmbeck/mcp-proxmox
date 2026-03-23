@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import html
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 

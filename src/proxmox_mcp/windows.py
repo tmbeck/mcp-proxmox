@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import os
-import base64
 import tempfile
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Union
-from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import requests
 
-from .utils import require_allowed_url
+from .utils import command_failure_message, require_allowed_url
 
 
 class WindowsConfig:
@@ -481,16 +479,55 @@ try {{
             ]
 
             try:
-                subprocess.run(cmd, check=True, capture_output=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                # Fallback to mkisofs
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as first_error:
                 cmd[0] = "mkisofs"
                 try:
-                    subprocess.run(cmd, check=True, capture_output=True)
-                except (subprocess.CalledProcessError, FileNotFoundError):
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as second_error:
                     raise RuntimeError(
-                        "Neither genisoimage nor mkisofs available for ISO creation"
-                    )
+                        command_failure_message(
+                            cmd,
+                            action="creating a Windows setup ISO",
+                            likely_cause="both ISO creation commands exited with errors",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=second_error.stderr or first_error.stderr,
+                        )
+                    ) from second_error
+                except FileNotFoundError as error:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating a Windows setup ISO",
+                            likely_cause="`mkisofs` is not installed and `genisoimage` already failed",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=str(error),
+                        )
+                    ) from error
+            except FileNotFoundError as first_missing:
+                cmd[0] = "mkisofs"
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as error:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating a Windows setup ISO",
+                            likely_cause="`genisoimage` is not installed and `mkisofs` returned an error",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=error.stderr,
+                        )
+                    ) from error
+                except FileNotFoundError as second_missing:
+                    raise RuntimeError(
+                        command_failure_message(
+                            cmd,
+                            action="creating a Windows setup ISO",
+                            likely_cause="neither `genisoimage` nor `mkisofs` is installed",
+                            try_next="install `genisoimage` or `mkisofs` on the MCP host and retry",
+                            stderr=f"{first_missing}; {second_missing}",
+                        )
+                    ) from second_missing
 
         return output_path
 
@@ -583,7 +620,7 @@ class WindowsProvisioner:
         windows_config.create_setup_iso(setup_iso_path, license_key)
 
         # Upload setup ISO
-        setup_upid = self.client.upload_iso(node, storage_id, setup_iso_path)
+        self.client.upload_iso(node, storage_id, setup_iso_path)
         setup_volid = f"{storage_id}:iso/windows-setup-{vmid}.iso"
 
         # Attach setup ISO to IDE2

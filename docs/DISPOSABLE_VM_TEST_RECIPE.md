@@ -34,7 +34,6 @@ Target workflow:
 ## Prerequisites
 
 - `.env` is present and valid.
-- `PROXMOX_MCP_PROFILES="core"`.
 - Default node, storage, and bridge are correct.
 - A known template VM is available for cloning.
 - For full in-guest install/test steps, the template must support reliable external SSH access as `ubuntu`.

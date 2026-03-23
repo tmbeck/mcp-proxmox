@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-proxmox"
-version = "0.2.1"
+version = "0.2.2"
 description = "Advanced Proxmox MCP Server (Model Context Protocol)"
 readme = "README.md"
 authors = [{ name = "bsahane" }]
@@ -25,95 +25,6 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 
-[project.optional-dependencies]
-control-plane = [
-  "fastapi>=0.104.1",
-  "uvicorn>=0.24.0",
-  "httpx>=0.25.2",
-  "pyjwt>=2.8.0",
-  "loguru>=0.7.2",
-]
-observability = [
-  "prometheus-client>=0.19.0",
-  "grafana-api>=1.0.3",
-  "elasticsearch>=8.11.0",
-  "loguru>=0.7.2",
-  "psutil>=5.9.6",
-  "pandas>=2.1.4",
-  "numpy>=1.25.2",
-]
-automation = [
-  "python-terraform>=0.10.1",
-  "ansible>=8.0.0",
-  "ansible-runner>=2.3.4",
-  "gitpython>=3.1.40",
-  "dulwich>=0.21.6",
-  "netaddr>=0.10.1",
-  "scapy>=2.5.0",
-  "pyroute2>=0.7.12",
-  "netmiko>=4.3.0",
-  "loguru>=0.7.2",
-  "schedule>=1.2.1",
-  "croniter>=2.0.1",
-  "python-crontab>=3.0.0",
-]
-security = [
-  "cryptography>=41.0.0",
-  "pyotp>=2.9.0",
-  "qrcode>=7.4.2",
-  "pillow>=10.0.0",
-  "fido2>=1.1.2",
-  "pyOpenSSL>=24.0.0",
-  "hvac>=2.0.0",
-  "loguru>=0.7.2",
-]
-ai = [
-  "loguru>=0.7.2",
-  "psutil>=5.9.6",
-  "py-cpuinfo>=9.0.0",
-  "scikit-learn>=1.3.2",
-  "pandas>=2.1.4",
-  "numpy>=1.25.2",
-  "scipy>=1.11.4",
-  "joblib>=1.3.2",
-]
-full = [
-  "fastapi>=0.104.1",
-  "uvicorn>=0.24.0",
-  "httpx>=0.25.2",
-  "pyjwt>=2.8.0",
-  "prometheus-client>=0.19.0",
-  "grafana-api>=1.0.3",
-  "elasticsearch>=8.11.0",
-  "loguru>=0.7.2",
-  "psutil>=5.9.6",
-  "pandas>=2.1.4",
-  "numpy>=1.25.2",
-  "python-terraform>=0.10.1",
-  "ansible>=8.0.0",
-  "ansible-runner>=2.3.4",
-  "gitpython>=3.1.40",
-  "dulwich>=0.21.6",
-  "netaddr>=0.10.1",
-  "scapy>=2.5.0",
-  "pyroute2>=0.7.12",
-  "netmiko>=4.3.0",
-  "schedule>=1.2.1",
-  "croniter>=2.0.1",
-  "python-crontab>=3.0.0",
-  "cryptography>=41.0.0",
-  "pyotp>=2.9.0",
-  "qrcode>=7.4.2",
-  "pillow>=10.0.0",
-  "fido2>=1.1.2",
-  "pyOpenSSL>=24.0.0",
-  "hvac>=2.0.0",
-  "py-cpuinfo>=9.0.0",
-  "scikit-learn>=1.3.2",
-  "scipy>=1.11.4",
-  "joblib>=1.3.2",
-]
-
 [dependency-groups]
 dev = [
   "pytest>=7.4.3",
@@ -122,45 +33,10 @@ dev = [
   "flake8>=6.1.0",
   "mypy>=1.7.1",
   "ruff>=0.9.0",
-  "fastapi>=0.104.1",
-  "uvicorn>=0.24.0",
-  "httpx>=0.25.2",
-  "pyjwt>=2.8.0",
-  "prometheus-client>=0.19.0",
-  "grafana-api>=1.0.3",
-  "elasticsearch>=8.11.0",
-  "loguru>=0.7.2",
-  "psutil>=5.9.6",
-  "pandas>=2.1.4",
-  "numpy>=1.25.2",
-  "python-terraform>=0.10.1",
-  "ansible>=8.0.0",
-  "ansible-runner>=2.3.4",
-  "gitpython>=3.1.40",
-  "dulwich>=0.21.6",
-  "netaddr>=0.10.1",
-  "scapy>=2.5.0",
-  "pyroute2>=0.7.12",
-  "netmiko>=4.3.0",
-  "schedule>=1.2.1",
-  "croniter>=2.0.1",
-  "python-crontab>=3.0.0",
-  "cryptography>=41.0.0",
-  "pyotp>=2.9.0",
-  "qrcode>=7.4.2",
-  "pillow>=10.0.0",
-  "fido2>=1.1.2",
-  "pyOpenSSL>=24.0.0",
-  "hvac>=2.0.0",
-  "py-cpuinfo>=9.0.0",
-  "scikit-learn>=1.3.2",
-  "scipy>=1.11.4",
-  "joblib>=1.3.2",
 ]
 
 [project.scripts]
 proxmox-mcp = "proxmox_mcp.server:main"
-proxmox-mcp-control-plane = "proxmox_mcp.control_plane:main"
 proxmox-mcp-release-patch = "proxmox_mcp.release:main"
 
 [tool.setuptools.package-dir]

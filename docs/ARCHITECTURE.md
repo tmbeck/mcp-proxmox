@@ -2,135 +2,57 @@
 
 ## Current Shape
 
-The repository now has two distinct runtime entrypoints built on the same shared codebase:
+The repository now ships a single MCP runtime:
 
 - `proxmox-mcp`
-  - lean, stdio-first MCP server
-  - defaults to the `core` profile
-  - intended for `uv tool install .` and local agent use
-- `proxmox-mcp-control-plane`
-  - shared-service oriented entrypoint
-  - defaults to `control-plane`, `observability`, `automation`, and `security`
-  - intended for Docker/team-shared deployments
+  - stdio-first MCP server
+  - focused on direct Proxmox management
+  - intended for local operator use from MCP clients such as Claude Code, Codex, Cursor, and Opencode
 
-Tool registration is now composed through registrar modules under `src/proxmox_mcp/registrars/`.
-
-## Current Profile Boundary
-
-- `core`
-  - direct Proxmox operations
-  - guest provisioning
-  - storage/network primitives needed for guest lifecycle
-  - notes and task helpers
-  - multi-cluster aggregation helpers
-- `control-plane`
-  - API gateway
-  - webhooks
-  - third-party integrations
-- `observability`
-  - monitoring/logging/performance-analysis helpers
-- `automation`
-  - Docker Swarm
-  - OpenShift deployment helpers
-  - IaC/GitOps helpers
-  - advanced storage/network automation
-- `security`
-  - MFA
-  - certificate management
-  - secret-store helpers
-- `ai`
-  - optimization/anomaly/predictive helpers
+Tool registration is composed through registrar modules under `src/proxmox_mcp/registrars/`.
 
 ## Current Package Boundary
 
-`pyproject.toml` now treats the core install as the default runtime and pushes broader capabilities behind optional extras.
+The package is intentionally trimmed to Proxmox-native operations:
 
-Examples:
+- cluster discovery and status
+- VM and LXC lifecycle
+- storage, snapshots, backups, templates, and uploads
+- pools, users, and permission helpers
+- cloud-init, Windows, and RHCOS provisioning helpers
+- notes and guest-operation helpers
 
-```bash
-# lean local MCP server
-uv tool install .
+Removed from the MCP surface:
 
-# broader shared control-plane install
-uv tool install '.[control-plane,observability,automation,security]'
-```
+- embedded control-plane and API-gateway features
+- monitoring/logging stack deployment
+- secret-store and other bundled security-service features
+- generic Terraform, Ansible, and GitOps runners
+- bundled Swarm and OpenShift orchestration helpers
 
-If a non-core profile is selected without the matching extras installed, startup fails fast with an install hint.
+The intended boundary is now simple: other systems decide what to automate, and this server performs Proxmox operations.
 
-## Current Deployment Guidance
+## Runtime Guidance
 
-Local/core use:
+Local use:
 
 ```bash
 uv tool install .
 proxmox-mcp
 ```
 
-Shared Docker/team use:
+Repo-local development:
 
 ```bash
-uv tool install '.[control-plane,observability,automation,security]'
-proxmox-mcp-control-plane
+uv sync --dev
+uv run proxmox-mcp
 ```
 
-Recommended env defaults for shared deployments:
+## Design Direction
 
-- `PROXMOX_API_GATEWAY_ALLOW_REMOTE=true`
-- `PROXMOX_API_GATEWAY_HOST=0.0.0.0`
-- `JWT_SECRET=<strong secret>`
-- `PROXMOX_API_GATEWAY_CORS_ORIGINS=<explicit origins>`
-- `PROXMOX_MCP_STATE_DIR=<mounted persistent path>`
+Near-term work should keep improving the core operator workflow:
 
-## What Still Needs To Happen
-
-The project is in a good place to stop and use the profile system as-is for now.
-
-For the current use case, the best architectural choice is:
-
-- keep `core` as the default local/stdIO runtime
-- treat broader behavior as opt-in profile selection
-- only deepen the control-plane runtime if real shared-deployment needs justify it later
-
-That means the next work should favor core ergonomics and deployment examples over more runtime abstraction.
-
-1. Split transport from service logic
-- move remaining helper/factory logic out of `src/proxmox_mcp/server.py`
-- keep MCP registration as one adapter
-- create a dedicated control-plane service adapter for shared HTTP/background-service use
-
-2. Expand the dedicated control-plane runtime module
-- own config loading for shared deployments
-- own gateway/auth/background workers
-- own persistent state/event/audit behavior
-- avoid inheriting local CLI assumptions by default
-
-3. Add deployment-specific packaging and launch conventions
-- keep the same repository/package family, but document the control-plane install path as a layered runtime
-- use dedicated extras and the `proxmox-mcp-control-plane` entrypoint instead of forcing a totally separate product
-- Dockerfile and compose example specifically for the shared control-plane runtime
-- explicit healthcheck/startup docs
-
-4. Add persistence and operational boundaries
-- move beyond filesystem-only local state for shared/team mode
-- add explicit event/audit storage interfaces
-- define which secrets/config remain local files versus injected secrets
-
-5. Add service-level tests
-- tests for control-plane default argv/profile behavior are now in place
-- next add HTTP/auth integration tests around the shared runtime itself
-
-## Recommended Near-Term Priority
-
-Before doing more control-plane work, focus on the direct operator use case:
-
-1. core VM/LXC ergonomics
-2. explicit disk attach/detach workflows
-3. Docker examples that simply invoke `proxmox-mcp --profile ...`
-4. only then revisit whether the convenience control-plane entrypoint needs to become more than a thin wrapper
-
-## Recommended Next Implementation Order
-
-1. Extract the remaining helper factories/config wiring from `src/proxmox_mcp/server.py`
-2. Add a dedicated `control_plane_service.py` runtime module that is not just a thin argv wrapper
-3. Add Docker deployment docs and example manifests for that runtime
-4. Add service-level integration tests for the control-plane runtime
+1. strengthen live Proxmox compatibility checks and smoke coverage
+2. keep destructive actions clearly marked in MCP metadata
+3. improve direct Proxmox ergonomics rather than adding adjacent platforms
+4. let external systems call this MCP server instead of embedding them inside it

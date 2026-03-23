@@ -9,36 +9,30 @@
 
 ### Start Reading With These Files
 1. **docs/ARCHITECTURE.md**
-   - Current core-vs-control-plane structure
-   - Profile and packaging boundaries
-   - Shared deployment guidance
-   - Next architecture roadmap
+   - Current core-only package boundary
+   - MCP runtime shape
+   - Direct operator guidance
+   - Near-term design direction
 
-2. **docs/CONTROL_PLANE_DEPLOYMENT.md**
-   - Shared/team deployment entrypoint
-   - Layered control-plane install/run guidance
-   - Recommended env settings
-   - Docker roadmap
-
-3. **docs/DISPOSABLE_VM_TEST_RECIPE.md**
+2. **docs/DISPOSABLE_VM_TEST_RECIPE.md**
    - Reserved-VMID disposable test workflow
    - Guardrails for avoiding existing VMs/storage
    - Core clone/start/guest/disk/cleanup sequence
    - Destructive action checkpoints
 
-4. **docs/FINAL_REPORT.md** (8.3 KB)
+3. **docs/FINAL_REPORT.md** (8.3 KB)
    - Comprehensive executive summary
    - Complete deployment details
    - Resource inventory and metrics
    - Integration instructions
 
-5. **docs/MCP_SERVER_START_GUIDE.md** (4.2 KB)
+4. **docs/MCP_SERVER_START_GUIDE.md** (4.2 KB)
    - How to run the server
    - Integration with Cursor and Claude
    - Available tools reference
    - Troubleshooting guide
 
-6. **docs/RESOURCES_SUMMARY.md** (2.9 KB)
+5. **docs/RESOURCES_SUMMARY.md** (2.9 KB)
    - Quick resource overview
    - Cluster details
    - Running/stopped VMs list

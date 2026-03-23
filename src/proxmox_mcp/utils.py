@@ -334,11 +334,6 @@ def require_allowed_url(url: str, *, purpose: str, user_provided: bool = False) 
     )
 
 
-def integrations_enabled() -> bool:
-    """Feature flag for outbound third-party integrations."""
-    return strtobool(os.environ.get("PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS"), False)
-
-
 def now_ms() -> int:
     return int(time.time() * 1000)
 

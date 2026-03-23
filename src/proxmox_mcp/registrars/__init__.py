@@ -1,1 +1,1 @@
-"""Tool registrar modules for composing MCP server profiles."""
+"""Tool registrar modules for composing the MCP server surface."""

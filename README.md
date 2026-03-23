@@ -1,11 +1,10 @@
 # MCP Proxmox Server
 
-Advanced Proxmox Model Context Protocol (MCP) server in Python exposing rich Proxmox utilities for discovery, lifecycle, networking, snapshots/backups, metrics, pools/permissions, and orchestration.
+Advanced Proxmox Model Context Protocol (MCP) server in Python exposing Proxmox utilities for discovery, lifecycle, networking, snapshots/backups, metrics, pools/permissions, and guest provisioning.
 
 - Guide reference: [MCP Quickstart (Python)](https://modelcontextprotocol.io/quickstart/server#python)
 - Structure mirrors: [`bsahane/mcp-ansible`](https://github.com/bsahane/mcp-ansible/tree/main)
 - Architecture overview: `docs/ARCHITECTURE.md`
-- Shared deployment guide: `docs/CONTROL_PLANE_DEPLOYMENT.md`
 - Disposable VM workflow recipe: `docs/DISPOSABLE_VM_TEST_RECIPE.md`
 
 ## Quick start
@@ -22,14 +21,7 @@ Run commands in the project environment with `uv run ...` (no manual activation 
 Install modes:
 
 - `uv tool install .` installs the lean core MCP server surface.
-- `uv tool install '.[control-plane,observability,automation,security]'` lets you run broader shared/team modes when you actually need them.
-- `uv tool install '.[control-plane]'` adds the shared API/integration feature set.
-- `uv tool install '.[observability]'` adds monitoring/logging helpers.
-- `uv tool install '.[automation]'` adds IaC/orchestration helpers.
-- `uv tool install '.[security]'` adds MFA/certificate/secret-store helpers.
-- `uv tool install '.[ai]'` adds AI/optimization helpers.
-- `uv tool install '.[full]'` installs every optional feature group.
-- If you select a non-core profile without its matching extra installed, the server now fails fast with a clear install hint.
+- The package now stays focused on direct Proxmox management instead of bundling control-plane, observability, security, or generic automation stacks.
 
 For a local tool-style install, you can also use:
 
@@ -93,7 +85,6 @@ PROXMOX_DEFAULT_NODE="pve"
 PROXMOX_DEFAULT_STORAGE="local-lvm"
 PROXMOX_DEFAULT_BRIDGE="vmbr0"
 PROXMOX_DEFAULT_LXC_PASSWORD=""
-PROXMOX_MCP_PROFILES="core"
 ```
 
 Notes:
@@ -101,12 +92,7 @@ Notes:
 - Using `.env` avoids zsh history expansion issues with `!` in token IDs.
 - For installed MCP client workflows, prefer `PROXMOX_ENV_FILE` or explicit client `env` blocks over relying on implicit `.env` discovery.
 - Outbound URL policy is strict by default: only private/local hosts are allowed unless explicitly listed in `PROXMOX_ALLOWED_URLS`.
-- Third-party integrations are disabled by default (`PROXMOX_ENABLE_EXTERNAL_INTEGRATIONS=false`).
-- The optional API gateway is local-first by default (`PROXMOX_API_GATEWAY_HOST=127.0.0.1`), keeps `/health` unauthenticated, and requires `JWT_SECRET` for management routes.
-- To share the API gateway from a Docker/container deployment, explicitly set `PROXMOX_API_GATEWAY_ALLOW_REMOTE=true`, choose a non-local host such as `0.0.0.0`, and set explicit `PROXMOX_API_GATEWAY_CORS_ORIGINS` values.
 - `PROXMOX_DEFAULT_LXC_PASSWORD` must be set before using `proxmox-create-lxc`; the server no longer falls back to a predictable default password.
-- Generated monitoring/logging stacks are now local-first by default (`PROXMOX_MONITORING_BIND_HOST=127.0.0.1`) and expect operator-supplied secrets via `PROXMOX_GRAFANA_ADMIN_PASSWORD` and `PROXMOX_ELASTIC_PASSWORD`.
-- `PROXMOX_MCP_PROFILES` can preselect optional tool surfaces for a deployment; the CLI `--profile` flag overrides it.
 - `PROXMOX_MCP_STATE_DIR` can relocate local state/config artifacts if you do not want them under `~/.proxmox_mcp`.
 
 ## Run the MCP server (stdio)
@@ -123,29 +109,9 @@ Or installed console script:
 uv run proxmox-mcp
 ```
 
-Profiles:
-
-- Default behavior is `core`, which includes direct Proxmox management and guest provisioning.
-- Optional profiles layer on broader control-plane features without changing the default surface.
-
 ```bash
-# Show available profiles
-uv run proxmox-mcp --list-profiles
-
-# Run the default core profile (same as omitting --profile)
-uv run proxmox-mcp --profile core
-
-# Add shared control-plane features such as webhooks and the optional API gateway
-uv run proxmox-mcp --profile control-plane
-
-# Compose multiple profiles
-uv run proxmox-mcp --profile observability --profile automation
-
-# Enable every optional profile
-uv run proxmox-mcp --profile full
-
-# Optional convenience wrapper for the broader shared profile set
-uv run proxmox-mcp-control-plane
+# Show available tool names
+uv run proxmox-mcp --list-tools
 ```
 
 ## Local MCP Client Setup
@@ -154,7 +120,7 @@ For local client tools, the easiest stable pattern is:
 
 1. install the CLI once with `uv tool install .`
 2. create `~/.config/proxmox-mcp/proxmox.env`
-3. point the MCP client at `proxmox-mcp --profile core`
+3. point the MCP client at `proxmox-mcp`
 4. pass `PROXMOX_ENV_FILE` in the client's environment block
 
 ### Opencode
@@ -167,7 +133,7 @@ Example `opencode.json` snippet:
   "mcp": {
     "proxmox-mcp": {
       "type": "local",
-      "command": ["proxmox-mcp", "--profile", "core"],
+      "command": ["proxmox-mcp"],
       "enabled": true,
       "environment": {
         "PROXMOX_ENV_FILE": "/Users/you/.config/proxmox-mcp/proxmox.env"
@@ -184,7 +150,6 @@ Example `~/.codex/config.toml` snippet:
 ```toml
 [mcp_servers.proxmox-mcp]
 command = "proxmox-mcp"
-args = ["--profile", "core"]
 
 [mcp_servers.proxmox-mcp.env]
 PROXMOX_ENV_FILE = "/Users/you/.config/proxmox-mcp/proxmox.env"
@@ -202,7 +167,6 @@ Project-local `.mcp.json` example:
     "proxmox-mcp": {
       "type": "stdio",
       "command": "proxmox-mcp",
-      "args": ["--profile", "core"],
       "env": {
         "PROXMOX_ENV_FILE": "/Users/you/.config/proxmox-mcp/proxmox.env"
       }
@@ -214,7 +178,7 @@ Project-local `.mcp.json` example:
 Equivalent CLI form:
 
 ```bash
-claude mcp add --transport stdio --scope project --env PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env" proxmox-mcp -- proxmox-mcp --profile core
+claude mcp add --transport stdio --scope project --env PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env" proxmox-mcp -- proxmox-mcp
 ```
 
 ### Why this differs from repo-local `.env`
@@ -228,21 +192,11 @@ When you run an installed tool from an MCP client, the process is no longer tied
 
 That makes the setup more predictable for Opencode, Codex, Claude Code, and similar local MCP clients.
 
-For a deeper explanation of the core-vs-control-plane split and the next package/service boundary work, see `docs/ARCHITECTURE.md`.
-For layered shared deployment guidance, see `docs/CONTROL_PLANE_DEPLOYMENT.md`.
+For a deeper explanation of the trimmed core-only package boundary, see `docs/ARCHITECTURE.md`.
 
-If your main goal is direct VM/LXC management, template cloning, provisioning, snapshots/backups, and related guest operations, stay on the default `core` profile.
+If your main goal is direct VM/LXC management, template cloning, provisioning, snapshots/backups, and related guest operations, the default server surface is the intended one.
 For product validation workflows, prefer external SSH for in-guest install/test steps; see `docs/DISPOSABLE_VM_TEST_RECIPE.md`.
 For clone-based SSH access, the core server already supports injecting an externally generated public key with `proxmox-cloudinit-set` before first boot.
-
-Profile guide:
-
-- `core`: default; direct Proxmox operations, provisioning, and guest lifecycle
-- `control-plane`: optional API gateway, webhooks, and external integrations
-- `observability`: monitoring, logging, and performance-analysis helpers
-- `automation`: Docker Swarm, OpenShift, IaC/GitOps, and advanced storage/network automation
-- `security`: MFA, certificates, and secret-store helpers
-- `ai`: AI/optimization helpers
 
 ## Compatibility
 
@@ -253,7 +207,7 @@ Profile guide:
 - The MCP server prints a stderr warning when a connected cluster reports a Proxmox VE version outside the tested `9.1.x` series.
 - `proxmox-get-cluster-version-compatibility` and `proxmox-get-all-cluster-status` also expose the detected version and compatibility verdict as MCP tool data.
 - True data-loss tools advertise MCP `destructiveHint`; parameter-gated cases such as `proxmox-vm-disk-remove` and `proxmox-restore-vm` publish extra `meta.proxmox.destructive_when` hints for clients that inspect tool metadata.
-- Current automated coverage: code-level tests, profile composition, security regressions, and packaging/entrypoint behavior.
+- Current automated coverage: code-level tests, safety regressions, and packaging/entrypoint behavior.
 - Not yet covered by CI: live integration tests against specific Proxmox VE versions or cluster topologies.
 
 ## Configure in Cursor

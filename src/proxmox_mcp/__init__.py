@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 _EXPORTS = {
     "ProxmoxClient": ("client", "ProxmoxClient"),
@@ -20,11 +20,8 @@ _EXPORTS = {
     "CloudInitProvisioner": ("cloudinit", "CloudInitProvisioner"),
     "IgnitionConfig": ("rhcos", "IgnitionConfig"),
     "RHCOSProvisioner": ("rhcos", "RHCOSProvisioner"),
-    "OpenShiftInstaller": ("rhcos", "OpenShiftInstaller"),
     "WindowsConfig": ("windows", "WindowsConfig"),
     "WindowsProvisioner": ("windows", "WindowsProvisioner"),
-    "DockerSwarmConfig": ("docker_swarm", "DockerSwarmConfig"),
-    "DockerSwarmProvisioner": ("docker_swarm", "DockerSwarmProvisioner"),
     "ClusterRegistry": ("cluster_manager", "ClusterRegistry"),
     "get_cluster_registry": ("cluster_manager", "get_cluster_registry"),
     "reset_cluster_registry": ("cluster_manager", "reset_cluster_registry"),

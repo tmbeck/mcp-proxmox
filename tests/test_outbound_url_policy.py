@@ -14,7 +14,6 @@ ALLOWLISTED_FILES = {
     "client.py",
     "windows.py",
     "rhcos.py",
-    "integrations.py",
 }
 
 

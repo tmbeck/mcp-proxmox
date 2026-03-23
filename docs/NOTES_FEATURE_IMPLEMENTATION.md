@@ -160,8 +160,8 @@ result = await proxmox_vm_notes_remove(
 
 ## 🔗 Integration with Existing Features
 
-### Secret-Store Integration
-- Notes can reference secrets stored in `proxmox-secret-store`
+### External Secret Integration
+- Notes can reference secrets stored in an external secret manager
 - Format: `secret://secret-name`
 - MCP tool parses and extracts references
 - Copy-to-clipboard support for secret IDs
@@ -194,7 +194,7 @@ result = await proxmox_vm_notes_remove(
 ✅ Parse secret references  
 ✅ Validate content for security  
 ✅ Support multiple formats  
-✅ Integrate with existing secret-store  
+✅ Support external secret references  
 
 ## 🚦 Next Steps
 
@@ -202,7 +202,7 @@ result = await proxmox_vm_notes_remove(
 1. Use `proxmox-notes-template` to generate note templates
 2. Update VM/LXC notes with `proxmox-vm-notes-update` or `proxmox-lxc-notes-update`
 3. Read notes with `proxmox-vm-notes-read` or `proxmox-lxc-notes-read`
-4. Store actual secrets in `proxmox-secret-store`
+4. Store actual secrets in your external secret manager
 5. Reference secrets in notes using `secret://` pattern
 
 ### For Developers
@@ -224,12 +224,7 @@ template = proxmox-notes-template(
     variables={...}
 )
 
-# 2. Store SSH key in secret-store
-proxmox-secret-store(
-    action="store",
-    secret_name="vm-341-ssh-key",
-    secret_value="<actual-key>"
-)
+# 2. Store SSH key in your external secret manager
 
 # 3. Update VM notes with template (includes secret reference)
 proxmox-vm-notes-update(

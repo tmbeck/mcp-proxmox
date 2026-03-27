@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
@@ -258,6 +259,7 @@ Updated: {DATE}
                 template_key = "minimal-plain"
 
         template = self.TEMPLATES.get(template_key, self.TEMPLATES["minimal-plain"])
+        escape_variables = template_key.endswith("-html")
 
         # Default variables
         default_vars = {
@@ -282,7 +284,10 @@ Updated: {DATE}
         # Replace variables in template
         result = template
         for key, value in default_vars.items():
-            result = result.replace(f"{{{key}}}", str(value))
+            rendered_value = str(value)
+            if escape_variables:
+                rendered_value = html.escape(rendered_value, quote=True)
+            result = result.replace(f"{{{key}}}", rendered_value)
 
         return result
 

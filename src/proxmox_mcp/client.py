@@ -899,6 +899,9 @@ class ProxmoxClient:
     def qga_exec_status(self, node: str, vmid: int, pid: int) -> Dict[str, Any]:
         return self._api.nodes(node).qemu(vmid).agent("exec-status").get(pid=pid)
 
+    def qga_get_info(self, node: str, vmid: int) -> Dict[str, Any]:
+        return self._api.nodes(node).qemu(vmid).agent("info").get()
+
     def qga_exec_wait(
         self,
         node: str,
@@ -1250,12 +1253,12 @@ class ProxmoxClient:
         """Get VNC console URL for VM."""
         # Get VM configuration to determine console type
         config = self.vm_config(node, vmid)
+        console_type = 4 if "serial0" in config else 0
 
         # For RHCOS VMs, we typically use serial console
-        if "serial0" in config:
-            return f"https://{self.base_url}:8006/#v1:0:18:{node}:4:{vmid}::"
-        else:
-            return f"https://{self.base_url}:8006/#v1:0:18:{node}:0:{vmid}::"
+        return (
+            f"{self.scheme}://{self.host}:{self.port}/#v1:0:18:{node}:{console_type}:{vmid}::"
+        )
 
     def wait_for_vm_ssh(self, node: str, vmid: int, timeout: int = 300) -> bool:
         """Wait for VM to be accessible via SSH."""
@@ -1433,7 +1436,7 @@ Write-Host "RDP disabled successfully"
             # Get guest info if QEMU agent is available
             guest_info = {}
             try:
-                guest_info = self.qga_exec(node, vmid, command="guest-info")
+                guest_info = self.qga_get_info(node, vmid)
             except Exception:
                 pass  # QEMU agent not available or VM not running
 

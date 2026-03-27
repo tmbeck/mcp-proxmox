@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
+
 """
 Test multi-cluster MCP server functionality
 """
@@ -49,7 +51,7 @@ def test_cluster_registry():
 
     try:
         config = load_cluster_registry_config()
-        print(f"Loaded registry config:")
+        print("Loaded registry config:")
         print(f"  - Clusters: {list(config.clusters.keys())}")
         print(f"  - Default cluster: {config.default_cluster}")
 

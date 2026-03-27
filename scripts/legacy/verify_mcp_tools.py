@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
+
 """Verify MCP Server by calling its tools directly."""
 
 import asyncio
@@ -43,7 +45,7 @@ async def main():
     try:
         # Need to pass cluster parameter for multi-cluster setup
         status = await proxmox_node_status(node="pve")
-        print(f"✅ SUCCESS - Retrieved node status")
+        print("✅ SUCCESS - Retrieved node status")
         print(f"   • Node: {status.get('data', {}).get('node', 'N/A')}")
         print(f"   • Status: {status.get('data', {}).get('status', 'N/A')}")
         print(f"   • CPU: {status.get('data', {}).get('cpu', 0) * 100:.2f}%")

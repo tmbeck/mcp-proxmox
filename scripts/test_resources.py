@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
+
 """Test script to list resources from both Production and Staging clusters."""
 
 import asyncio

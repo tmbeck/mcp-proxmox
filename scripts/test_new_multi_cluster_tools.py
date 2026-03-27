@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
+
 """
 Test the new multi-cluster aggregation tools
 """

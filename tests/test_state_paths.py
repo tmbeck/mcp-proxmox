@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from proxmox_mcp.state import get_state_file, get_state_root, get_state_subdir
 
 
@@ -26,3 +28,21 @@ def test_state_root_honors_explicit_override(monkeypatch, tmp_path: Path) -> Non
     assert secret_file == custom_root / "secrets" / "token.enc"
     assert subdir.exists()
     assert secret_file.parent.exists()
+
+
+def test_state_subdir_rejects_parent_directory_escape(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PROXMOX_MCP_STATE_DIR", str(tmp_path / "state"))
+
+    with pytest.raises(ValueError, match="state path"):
+        get_state_subdir("..", "escape", create=False)
+
+
+def test_state_file_rejects_absolute_path_component(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PROXMOX_MCP_STATE_DIR", str(tmp_path / "state"))
+
+    with pytest.raises(ValueError, match="state path"):
+        get_state_file("/tmp", "escape.txt")

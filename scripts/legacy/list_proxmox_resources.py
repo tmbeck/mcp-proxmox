@@ -15,7 +15,7 @@ import sys
 import os
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 import logging
 
 # Add project src to path

@@ -34,11 +34,21 @@ async def test_notes_feature():
             proxmox_notes_template,
         )
 
+        imported_tools = (
+            proxmox_vm_notes_read,
+            proxmox_vm_notes_update,
+            proxmox_vm_notes_remove,
+            proxmox_lxc_notes_read,
+            proxmox_lxc_notes_update,
+            proxmox_lxc_notes_remove,
+            proxmox_notes_template,
+        )
+        assert len(imported_tools) == 7
+
         print("✅ All 7 MCP tools imported successfully")
 
         # Test 3: Test format detection
         print("\n3️⃣ Testing Format Detection...")
-        from proxmox_mcp.client import ProxmoxClient
 
         # Create a mock client for testing (without actual Proxmox connection)
         class MockClient:
@@ -113,7 +123,7 @@ async def test_notes_feature():
                 {"VM_NAME": "test-vm", "IP_ADDRESS": "192.168.1.100"},
             )
             assert len(template) > 0, f"Template {template_type} should not be empty"
-            assert "test-vm" in template, f"Template should contain VM_NAME"
+            assert "test-vm" in template, "Template should contain VM_NAME"
             print(f"✅ Template '{template_type}-{format_type}': {len(template)} chars")
 
         # Test 7: Test markdown rendering
@@ -133,7 +143,7 @@ async def test_notes_feature():
         assert "secret_references" in output
         assert output["format"] == "markdown"
         assert len(output["secret_references"]) == 1
-        print(f"✅ Output formatted correctly")
+        print("✅ Output formatted correctly")
         print(f"   Format: {output['format']}")
         print(f"   Secrets: {output['secret_references']}")
         print(f"   Length: {output['length']} chars")

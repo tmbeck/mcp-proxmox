@@ -221,6 +221,12 @@ grep PROXMOX_CLUSTERS .env
 - `proxmox-vm-nic-add` - Add network interface
 - `proxmox-cloudinit-set` - Configure cloud-init
 
+### Provisioning
+- `proxmox-list-os-templates` - List builtin OS profiles and Proxmox VM templates
+- `proxmox-create-vm-cloudinit` - Clone a VM template and apply native Cloud-Init
+- `proxmox-configure-cloudinit-advanced` - Apply advanced Cloud-Init with optional snippets
+- `proxmox-create-preset-vm` - Clone a template and apply a preset Cloud-Init profile
+
 ---
 
 ## 📈 Key Metrics

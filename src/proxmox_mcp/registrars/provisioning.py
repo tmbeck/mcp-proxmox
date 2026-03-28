@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any, Callable, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -37,6 +36,7 @@ def register_provisioning_tools(
             raise ValueError("node and storage are required (or set defaults)")
 
         storage_templates = client.list_os_templates(node_id, storage_id)
+        vm_templates = client.list_vm_templates(node=node_id)
         builtin_templates = [
             {
                 "name": template_key,
@@ -51,8 +51,12 @@ def register_provisioning_tools(
 
         return {
             "storage_templates": storage_templates,
+            "vm_templates": vm_templates,
             "builtin_templates": builtin_templates,
-            "total_templates": len(storage_templates) + len(builtin_templates),
+            "total_templates": len(storage_templates)
+            + len(vm_templates)
+            + len(builtin_templates),
+            "note": "Use vm_templates as source_template for native cloud-init clones; builtin_templates are OS profiles.",
         }
 
     @server.tool("proxmox-download-os-template")
@@ -104,8 +108,12 @@ def register_provisioning_tools(
         vmid: int = 0,
         name: str = "",
         template: str = "ubuntu-22.04",
+        source_template: str = "",
         cloudinit_config: Optional[Dict[str, Any]] = None,
         hardware: Optional[Dict[str, Any]] = None,
+        storage: Optional[str] = None,
+        bridge: Optional[str] = None,
+        snippet_storage: Optional[str] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -118,6 +126,14 @@ def register_provisioning_tools(
             raise ValueError("node is required (or set PROXMOX_DEFAULT_NODE)")
         if vmid <= 0 or not name:
             raise ValueError("vmid > 0 and non-empty name are required")
+        if template not in CloudInitConfig.OS_TEMPLATES:
+            raise ValueError(
+                f"Unsupported OS profile: {template}. Supported: {list(CloudInitConfig.OS_TEMPLATES.keys())}"
+            )
+        if not source_template:
+            raise ValueError(
+                "source_template is required and must reference a prepared Proxmox VM template name or VMID"
+            )
 
         hw_config = hardware or {}
         cores = hw_config.get("cores", 2)
@@ -133,12 +149,16 @@ def register_provisioning_tools(
                     "vmid": vmid,
                     "name": name,
                     "template": template,
+                    "source_template": source_template,
                     "hardware": {
                         "cores": cores,
                         "memory_mb": memory_mb,
                         "disk_gb": disk_gb,
                     },
                     "cloudinit_config": cloudinit_config,
+                    "storage": storage,
+                    "bridge": bridge,
+                    "snippet_storage": snippet_storage,
                 },
             }
 
@@ -174,18 +194,27 @@ def register_provisioning_tools(
                 config.set_timezone(cloudinit_config["timezone"])
 
         provisioner = CloudInitProvisioner(client)
-        upid = provisioner.create_vm_with_cloudinit(
+        result = provisioner.create_vm_with_cloudinit(
             node=node_id,
             vmid=vmid,
             name=name,
-            template=template,
+            source_template=source_template,
             cloudinit_config=config,
             hardware={"cores": cores, "memory_mb": memory_mb, "disk_gb": disk_gb},
+            storage=storage,
+            bridge=bridge,
+            snippet_storage=snippet_storage,
+            timeout=timeout,
+            poll_interval=poll_interval,
         )
-        result: Dict[str, Any] = {"upid": upid, "template": template}
+        result["template"] = template
+        result["source_template_ref"] = source_template
         if wait:
             result["status"] = client.wait_task(
-                upid, node=node_id, timeout=timeout, poll_interval=poll_interval
+                result["upid"],
+                node=node_id,
+                timeout=timeout,
+                poll_interval=poll_interval,
             )
         return result
 
@@ -199,6 +228,8 @@ def register_provisioning_tools(
         commands: Optional[List[str | List[str]]] = None,
         network_config: Optional[Dict[str, Any]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        storage: Optional[str] = None,
+        snippet_storage: Optional[str] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """Configure advanced CloudInit settings for VM."""
@@ -217,6 +248,8 @@ def register_provisioning_tools(
                     "commands": commands or [],
                     "network_config": network_config,
                     "files": files or [],
+                    "storage": storage,
+                    "snippet_storage": snippet_storage,
                 },
             }
 
@@ -252,12 +285,15 @@ def register_provisioning_tools(
                     file_config.get("encoding", "text/plain"),
                 )
 
-        user_data = config.to_user_data()
-        iso_path = f"/tmp/cloudinit-{vm_vmid}.iso"
-        client.create_cloudinit_iso(user_data, output_path=iso_path)
-        result = client.attach_cloudinit_iso(vm_node, vm_vmid, iso_path)
-        os.unlink(iso_path)
-        return result
+        payload = config.to_proxmox_payload()
+        return client.apply_cloudinit_config(
+            vm_node,
+            vm_vmid,
+            cloudinit_params=payload.native_params,
+            user_data=payload.custom_user_data,
+            storage=storage,
+            snippet_storage=snippet_storage,
+        )
 
     @server.tool("proxmox-create-preset-vm")
     async def proxmox_create_preset_vm(
@@ -265,9 +301,13 @@ def register_provisioning_tools(
         node: Optional[str] = None,
         vmid: int = 0,
         name: str = "",
+        source_template: str = "",
         hostname: str = "",
         ssh_keys: Optional[List[str]] = None,
         admin_user: str = "",
+        storage: Optional[str] = None,
+        bridge: Optional[str] = None,
+        snippet_storage: Optional[str] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -283,6 +323,10 @@ def register_provisioning_tools(
         ssh_keys = ssh_keys or []
         if not ssh_keys:
             raise ValueError("ssh_keys are required for preset configurations")
+        if not source_template:
+            raise ValueError(
+                "source_template is required and must reference a prepared Proxmox VM template name or VMID"
+            )
 
         preset_configs = {
             "web-server": get_ubuntu_web_server_config,
@@ -303,9 +347,13 @@ def register_provisioning_tools(
                     "node": node_id,
                     "vmid": vmid,
                     "name": name,
+                    "source_template": source_template,
                     "hostname": hostname or name,
                     "admin_user": admin_user,
                     "ssh_keys_count": len(ssh_keys),
+                    "storage": storage,
+                    "bridge": bridge,
+                    "snippet_storage": snippet_storage,
                 },
             }
 
@@ -314,22 +362,32 @@ def register_provisioning_tools(
             hostname or name, ssh_keys, admin_user or default_user
         )
         provisioner = CloudInitProvisioner(client)
-        upid = provisioner.create_vm_with_cloudinit(
+        result = provisioner.create_vm_with_cloudinit(
             node=node_id,
             vmid=vmid,
             name=name,
-            template=config.template,
+            source_template=source_template,
             cloudinit_config=config,
             hardware={"cores": 2, "memory_mb": 2048, "disk_gb": 20},
+            storage=storage,
+            bridge=bridge,
+            snippet_storage=snippet_storage,
+            timeout=timeout,
+            poll_interval=poll_interval,
         )
-        result: Dict[str, Any] = {
-            "upid": upid,
-            "preset": preset,
-            "template": config.template,
-        }
+        result.update(
+            {
+                "preset": preset,
+                "template": config.template,
+                "source_template_ref": source_template,
+            }
+        )
         if wait:
             result["status"] = client.wait_task(
-                upid, node=node_id, timeout=timeout, poll_interval=poll_interval
+                result["upid"],
+                node=node_id,
+                timeout=timeout,
+                poll_interval=poll_interval,
             )
         return result
 

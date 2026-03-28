@@ -197,6 +197,7 @@ For a deeper explanation of the trimmed core-only package boundary, see `docs/AR
 If your main goal is direct VM/LXC management, template cloning, provisioning, snapshots/backups, and related guest operations, the default server surface is the intended one.
 For product validation workflows, prefer external SSH for in-guest install/test steps; see `docs/DISPOSABLE_VM_TEST_RECIPE.md`.
 For clone-based SSH access, the core server already supports injecting an externally generated public key with `proxmox-cloudinit-set` before first boot.
+For full Linux provisioning, the Cloud-Init helpers now follow Proxmox's native model: clone a prepared VM template, ensure a Cloud-Init drive exists, then apply native Cloud-Init params and optional `cicustom` user-data snippets.
 
 ## Compatibility
 
@@ -343,10 +344,62 @@ Format below per tool:
   - Set CI params (ipconfig0, sshkeys, ciuser/cipassword)
   - Example: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1" }`
   - Answer: `{ "upid": "UPID:..." }` or `{ "result": null }`
+- `proxmox-list-os-templates`
+  - List storage templates, builtin OS profiles, and discovered Proxmox VM templates
+  - Answer includes `vm_templates` for native clone sources and `builtin_templates` for OS defaults
+- `proxmox-create-vm-cloudinit`
+  - Clone a prepared Proxmox VM template and apply Cloud-Init using native params plus optional `cicustom` user-data snippets
+  - Important: `source_template` is the Proxmox VM template name or VMID to clone; `template` selects the builtin OS profile defaults
+- `proxmox-configure-cloudinit-advanced`
+  - Apply advanced Cloud-Init config to an existing VM using native params first and `cicustom` user-data snippets only when needed
+- `proxmox-create-preset-vm`
+  - Clone a prepared Proxmox VM template and apply one of the built-in Cloud-Init presets (`web-server`, `docker-host`, `development`)
 - `proxmox-vm-nic-add` / `proxmox-vm-nic-remove`
   - Add/remove NICs (bridge, model, VLAN)
 - `proxmox-vm-firewall-get` / `proxmox-vm-firewall-set`
   - Get/set per-VM firewall state and rules
+
+### Native Cloud-Init workflow
+
+1. Prepare a Proxmox VM template that already boots a cloud image and has Cloud-Init installed.
+2. Discover candidate templates with `proxmox-list-os-templates` and look at `vm_templates`.
+3. Create the VM with `proxmox-create-vm-cloudinit` or `proxmox-create-preset-vm`, passing:
+   - `source_template`: the actual Proxmox VM template to clone
+   - `template`: the builtin OS profile (`ubuntu-22.04`, `ubuntu-24.04`, `fedora-40`, ...)
+4. Use `snippet_storage` only when advanced settings require custom `user-data`; simple SSH user/network settings stay in native Proxmox Cloud-Init fields.
+
+Example native Cloud-Init clone:
+
+```json
+{
+  "node": "pve",
+  "vmid": 9201,
+  "name": "web-01",
+  "source_template": "ubuntu-2404-cloudinit-template",
+  "template": "ubuntu-24.04",
+  "bridge": "vmbr0",
+  "cloudinit_config": {
+    "hostname": "web-01",
+    "users": [
+      {
+        "name": "ubuntu",
+        "ssh_keys": ["ssh-ed25519 AAAA... user@example"]
+      }
+    ],
+    "network": {
+      "dhcp": false,
+      "ip": "192.168.1.50/24",
+      "gateway": "192.168.1.1",
+      "nameservers": ["1.1.1.1", "8.8.8.8"]
+    },
+    "packages": ["nginx"],
+    "commands": ["systemctl enable nginx"]
+  },
+  "wait": true
+}
+```
+
+In that example, the user and network settings map to Proxmox-native `ciuser`, `sshkeys`, `ipconfig0`, and `nameserver`. The package and command sections fall back to a Proxmox-managed `cicustom` user snippet.
 
 ### Images, templates, snapshots, backups
 - `proxmox-upload-iso` / `proxmox-upload-template`
@@ -384,6 +437,7 @@ Format below per tool:
 - VMs on node `pve`: `{ "node": "pve" }` for `proxmox-list-vms`
 - Clone a template: `{ "source_vmid": 101, "new_vmid": 50009, "name": "web01", "storage": "local-lvm", "wait": true }`
 - Configure Cloud-init IP: `{ "name": "web01", "ipconfig0": "ip=192.168.1.50/24,gw=192.168.1.1" }`
+- Create a Cloud-Init VM from a prepared Proxmox template: `{ "node": "pve", "vmid": 9201, "name": "web-01", "source_template": "ubuntu-2404-cloudinit-template", "template": "ubuntu-24.04", "wait": true }`
 - Run an install/test command in a Linux guest: `{ "name": "web01", "script": "sudo ./install.sh && ./run-tests.sh", "wait": true }` for `proxmox-guest-shell`
 
 ## Notes

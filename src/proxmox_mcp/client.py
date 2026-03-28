@@ -4,6 +4,7 @@ import os
 import re
 import ssl
 import time
+import tempfile
 import ipaddress
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,6 +22,10 @@ TESTED_PROXMOX_VE_VERSION = "9.1.6"
 TESTED_PROXMOX_VE_SERIES = (9, 1)
 TESTED_PROXMOX_VE_SERIES_LABEL = "9.1.x"
 _PROXMOX_VERSION_PATTERN = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)(?:\.\d+)?$")
+_DISK_SIZE_PATTERN = re.compile(
+    r"(?:^|,)size=(?P<size>\d+(?:\.\d+)?)(?P<unit>[KMGT])(?:i?B|B)?(?:,|$)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,18 @@ def _parse_proxmox_version_series(version: Optional[str]) -> Optional[Tuple[int,
         return None
 
     return int(match.group("major")), int(match.group("minor"))
+
+
+def _parse_disk_size_gb(config_value: str) -> Optional[int]:
+    match = _DISK_SIZE_PATTERN.search(config_value)
+    if not match:
+        return None
+
+    size = float(match.group("size"))
+    unit = match.group("unit").upper()
+    multipliers = {"K": 1 / (1024 * 1024), "M": 1 / 1024, "G": 1, "T": 1024}
+    size_gb = size * multipliers[unit]
+    return max(1, int(size_gb) if size_gb.is_integer() else int(size_gb) + 1)
 
 
 class _TLSHttpAdapter(HTTPAdapter):
@@ -216,6 +233,25 @@ class ProxmoxClient:
             lxcs = [c for c in lxcs if s in str(c.get("name", "")).lower()]
         return lxcs
 
+    def list_vm_templates(
+        self,
+        node: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        templates = [
+            vm
+            for vm in self._api.cluster.resources.get(type="vm")
+            if vm.get("template")
+        ]
+        if node:
+            templates = [vm for vm in templates if vm.get("node") == node]
+        if search:
+            needle = search.lower()
+            templates = [
+                vm for vm in templates if needle in str(vm.get("name", "")).lower()
+            ]
+        return templates
+
     def resolve_vm(
         self,
         vmid: Optional[int] = None,
@@ -241,6 +277,24 @@ class ProxmoxClient:
 
         vm = candidates[0]
         return int(vm["vmid"]), str(vm["node"]), vm
+
+    def resolve_vm_template(
+        self,
+        template: str | int,
+        node: Optional[str] = None,
+    ) -> Tuple[int, str, Dict[str, Any]]:
+        if isinstance(template, int) or (
+            isinstance(template, str) and template.strip().isdigit()
+        ):
+            vm_vmid, vm_node, vm = self.resolve_vm(vmid=int(template), node=node)
+        else:
+            vm_vmid, vm_node, vm = self.resolve_vm(name=str(template), node=node)
+
+        if not vm.get("template"):
+            raise ValueError(
+                f"VM '{template}' exists but is not marked as a Proxmox template"
+            )
+        return vm_vmid, vm_node, vm
 
     def resolve_lxc(
         self,
@@ -675,6 +729,118 @@ class ProxmoxClient:
         upid = self._api.nodes(node).qemu(vmid).config.put(**params)
         return {"upid": upid} if isinstance(upid, str) else {"result": upid}
 
+    def ensure_cloudinit_drive(
+        self,
+        node: str,
+        vmid: int,
+        storage: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        config = self.vm_config(node, vmid)
+        for device, value in config.items():
+            if isinstance(value, str) and ":cloudinit" in value:
+                return {"present": True, "device": device, "config": value}
+
+        if "ide2" in config:
+            raise ValueError(
+                "VM uses ide2 for non-cloud-init media; free ide2 or attach a cloud-init drive manually"
+            )
+
+        storage_id = storage or self.default_storage or "local-lvm"
+        config_value = f"{storage_id}:cloudinit"
+        upid = self._api.nodes(node).qemu(vmid).config.put(ide2=config_value)
+        return {
+            "added": True,
+            "device": "ide2",
+            "config": config_value,
+            "storage": storage_id,
+            "upid": upid,
+        }
+
+    def upload_snippet(self, node: str, storage: str, file_path: str) -> str:
+        with open(file_path, "rb") as f:
+            return (
+                self._api.nodes(node)
+                .storage(storage)
+                .upload.post(
+                    content="snippets", filename=os.path.basename(file_path), file=f
+                )
+            )
+
+    def apply_cloudinit_config(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        cloudinit_params: Optional[Dict[str, Any]] = None,
+        user_data: Optional[str] = None,
+        storage: Optional[str] = None,
+        snippet_storage: Optional[str] = None,
+        timeout: int = 900,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        drive = self.ensure_cloudinit_drive(node, vmid, storage=storage)
+        result["cloudinit_drive"] = drive
+        if "upid" in drive:
+            result["cloudinit_drive_status"] = self.wait_task(
+                drive["upid"],
+                node=node,
+                timeout=timeout,
+                poll_interval=poll_interval,
+            )
+
+        params = dict(cloudinit_params or {})
+        if user_data:
+            snippet_storage_id = snippet_storage or "local"
+            temp_path = ""
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", delete=False, suffix=".yaml", encoding="utf-8"
+                ) as temp_file:
+                    temp_file.write(user_data)
+                    temp_path = temp_file.name
+                upload_upid = self.upload_snippet(node, snippet_storage_id, temp_path)
+                result["snippet_upload_upid"] = upload_upid
+                result["snippet_upload_status"] = self.wait_task(
+                    upload_upid,
+                    node=node,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Unable to upload Cloud-Init snippet to storage '{snippet_storage_id}'. "
+                    "Use a storage that supports snippets, such as 'local'."
+                ) from exc
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
+
+            snippet_name = os.path.basename(temp_path)
+            params["cicustom"] = f"user={snippet_storage_id}:snippets/{snippet_name}"
+            result["cicustom"] = params["cicustom"]
+
+        if not params:
+            return result
+
+        result["config"] = params
+        config_result = self.configure_vm(node, vmid, params)
+        result.update(config_result)
+        return result
+
+    def _get_primary_disk(
+        self, node: str, vmid: int
+    ) -> Tuple[Optional[str], Optional[int]]:
+        config = self.vm_config(node, vmid)
+        for device in sorted(config):
+            if not device.startswith(VM_DISK_PREFIXES):
+                continue
+            value = str(config[device])
+            if "media=cdrom" in value or ":cloudinit" in value:
+                continue
+            return device, _parse_disk_size_gb(value)
+        return None, None
+
     def vm_nic_add(
         self,
         node: str,
@@ -986,29 +1152,85 @@ class ProxmoxClient:
         disk_gb: int = 20,
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
+        cloudinit_params: Optional[Dict[str, Any]] = None,
         user_data: Optional[str] = None,
-    ) -> str:
-        """Create VM with CloudInit support."""
-        storage_id = storage or self.default_storage or "local-lvm"
-        bridge_id = bridge or self.default_bridge or "vmbr0"
-
-        params: Dict[str, Any] = {
-            "vmid": vmid,
-            "name": name,
-            "cores": cores,
-            "memory": memory_mb,
-            "scsihw": "virtio-scsi-pci",
-            "agent": 1,
-            "ostype": "l26",
-            "boot": "order=scsi0;ide2;net0",
-            "serial0": "socket",
-            "vga": "serial0",
-            "scsi0": f"{storage_id}:{max(disk_gb, 1)}",
-            "net0": f"virtio,bridge={bridge_id}",
-            "ide2": f"{storage_id}:cloudinit",  # CloudInit drive
+        snippet_storage: Optional[str] = None,
+        timeout: int = 900,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Clone a prepared Proxmox VM template and apply native Cloud-Init."""
+        template_vmid, template_node, template_vm = self.resolve_vm_template(
+            template, node=node
+        )
+        result: Dict[str, Any] = {
+            "source_template": {
+                "vmid": template_vmid,
+                "node": template_node,
+                "name": template_vm.get("name"),
+            }
         }
 
-        return self._api.nodes(node).qemu.post(**params)
+        clone_upid = self.clone_vm(
+            source_node=template_node,
+            source_vmid=template_vmid,
+            target_node=node,
+            new_vmid=vmid,
+            name=name,
+            full=True,
+            storage=storage,
+        )
+        result["clone_upid"] = clone_upid
+        result["clone_status"] = self.wait_task(
+            clone_upid,
+            node=template_node,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+
+        effective_cloudinit_params = dict(cloudinit_params or {})
+        effective_cloudinit_params.update({"cores": cores, "memory": memory_mb})
+        if bridge:
+            effective_cloudinit_params["net0"] = f"virtio,bridge={bridge}"
+
+        apply_result = self.apply_cloudinit_config(
+            node,
+            vmid,
+            cloudinit_params=effective_cloudinit_params,
+            user_data=user_data,
+            storage=storage,
+            snippet_storage=snippet_storage,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+        result.update(apply_result)
+
+        final_upid = apply_result.get("upid")
+        disk_device, current_disk_gb = self._get_primary_disk(node, vmid)
+        if (
+            disk_device is not None
+            and current_disk_gb is not None
+            and disk_gb > current_disk_gb
+        ):
+            if isinstance(final_upid, str):
+                result["config_status"] = self.wait_task(
+                    final_upid,
+                    node=node,
+                    timeout=timeout,
+                    poll_interval=poll_interval,
+                )
+            growth_gb = disk_gb - current_disk_gb
+            resize_upid = self.resize_vm_disk(node, vmid, disk_device, growth_gb)
+            result["resize_upid"] = resize_upid
+            result["resized_disk"] = disk_device
+            result["target_disk_gb"] = disk_gb
+            final_upid = resize_upid
+        elif disk_device is None or current_disk_gb is None:
+            result.setdefault("warnings", []).append(
+                "Unable to determine the cloned VM disk size; skipped disk resize"
+            )
+
+        result["upid"] = final_upid or clone_upid
+        return result
 
     def download_os_template(
         self, node: str, storage: str, template_name: str, template_url: str
@@ -1143,6 +1365,9 @@ class ProxmoxClient:
                     "nameserver",
                     "sshkeys",
                     "ipconfig",
+                    "cicustom",
+                    "citype",
+                    "ciupgrade",
                 )
             ):
                 cloudinit_config[key] = value
@@ -1256,9 +1481,7 @@ class ProxmoxClient:
         console_type = 4 if "serial0" in config else 0
 
         # For RHCOS VMs, we typically use serial console
-        return (
-            f"{self.scheme}://{self.host}:{self.port}/#v1:0:18:{node}:{console_type}:{vmid}::"
-        )
+        return f"{self.scheme}://{self.host}:{self.port}/#v1:0:18:{node}:{console_type}:{vmid}::"
 
     def wait_for_vm_ssh(self, node: str, vmid: int, timeout: int = 300) -> bool:
         """Wait for VM to be accessible via SSH."""

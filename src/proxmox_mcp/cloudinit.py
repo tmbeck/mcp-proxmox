@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import dataclass
 import os
 import tempfile
 import yaml
@@ -10,6 +12,20 @@ from typing import Any, Dict, List, Optional, Union
 from jsonschema import validate, ValidationError
 
 from .utils import command_failure_message
+
+
+DEFAULT_CLOUDINIT_CONFIG: Dict[str, Any] = {
+    "package_update": True,
+    "package_upgrade": False,
+    "ssh_pwauth": True,
+    "disable_root": True,
+}
+
+
+@dataclass(frozen=True)
+class ProxmoxCloudInitPayload:
+    native_params: Dict[str, str]
+    custom_user_data: Optional[str] = None
 
 
 class CloudInitConfig:
@@ -167,12 +183,7 @@ class CloudInitConfig:
 
         self.template = template
         self.template_info = self.OS_TEMPLATES[template]
-        self.config: Dict[str, Any] = {
-            "package_update": True,
-            "package_upgrade": False,
-            "ssh_pwauth": True,
-            "disable_root": True,
-        }
+        self.config: Dict[str, Any] = dict(DEFAULT_CLOUDINIT_CONFIG)
 
     def add_user(
         self,
@@ -298,6 +309,105 @@ class CloudInitConfig:
         """Generate user-data for CloudInit."""
         return self.to_yaml()
 
+    def _user_can_use_native_params(self, user: Dict[str, Any]) -> bool:
+        supported_keys = {
+            "name",
+            "ssh_authorized_keys",
+            "passwd",
+            "lock_passwd",
+            "sudo",
+            "shell",
+        }
+        if set(user) - supported_keys:
+            return False
+        if user.get("sudo", "ALL=(ALL) NOPASSWD:ALL") != "ALL=(ALL) NOPASSWD:ALL":
+            return False
+        if user.get("shell", "/bin/bash") != "/bin/bash":
+            return False
+        if user.get("lock_passwd") is False and not user.get("passwd"):
+            return False
+        return True
+
+    def _build_native_network_params(self, network: Dict[str, Any]) -> Dict[str, str]:
+        ethernets = network.get("ethernets") or {}
+        if not ethernets:
+            return {}
+        if len(ethernets) != 1:
+            raise ValueError(
+                "Native Proxmox Cloud-Init currently supports one network interface"
+            )
+
+        interface_config = next(iter(ethernets.values()))
+        params: Dict[str, str] = {}
+        if interface_config.get("dhcp4", False):
+            params["ipconfig0"] = "ip=dhcp"
+        else:
+            addresses = interface_config.get("addresses") or []
+            if len(addresses) > 1:
+                raise ValueError(
+                    "Native Proxmox Cloud-Init currently supports one IPv4 address on net0"
+                )
+            if addresses:
+                params["ipconfig0"] = f"ip={addresses[0]}"
+                gateway = interface_config.get("gateway4")
+                if gateway:
+                    params["ipconfig0"] += f",gw={gateway}"
+            else:
+                params["ipconfig0"] = "ip=dhcp"
+
+        nameservers = interface_config.get("nameservers") or {}
+        resolver_addresses = nameservers.get("addresses") or []
+        if resolver_addresses:
+            params["nameserver"] = " ".join(str(value) for value in resolver_addresses)
+
+        search = nameservers.get("search")
+        if search:
+            if isinstance(search, list):
+                params["searchdomain"] = " ".join(str(value) for value in search)
+            else:
+                params["searchdomain"] = str(search)
+
+        return params
+
+    def to_proxmox_payload(self) -> ProxmoxCloudInitPayload:
+        """Render config into Proxmox-native settings plus optional user-data."""
+        self.validate_config()
+
+        native_params: Dict[str, str] = {}
+        custom_config = deepcopy(self.config)
+
+        users = custom_config.get("users") or []
+        if len(users) == 1 and self._user_can_use_native_params(users[0]):
+            user = users[0]
+            native_params["ciuser"] = str(user["name"])
+            ssh_keys = user.get("ssh_authorized_keys") or []
+            if ssh_keys:
+                native_params["sshkeys"] = "\n".join(str(key) for key in ssh_keys)
+            if user.get("passwd"):
+                native_params["cipassword"] = str(user["passwd"])
+            custom_config.pop("users", None)
+
+        network = custom_config.get("network")
+        if network:
+            native_params.update(self._build_native_network_params(network))
+            custom_config.pop("network", None)
+
+        needs_custom_user_data = any(
+            key not in DEFAULT_CLOUDINIT_CONFIG
+            or value != DEFAULT_CLOUDINIT_CONFIG[key]
+            for key, value in custom_config.items()
+        )
+        if not needs_custom_user_data:
+            return ProxmoxCloudInitPayload(native_params=native_params)
+
+        user_data = "#cloud-config\n" + yaml.dump(
+            custom_config, default_flow_style=False, allow_unicode=True
+        )
+        return ProxmoxCloudInitPayload(
+            native_params=native_params,
+            custom_user_data=user_data,
+        )
+
     def create_iso(
         self,
         output_path: str,
@@ -408,52 +518,37 @@ class CloudInitProvisioner:
         node: str,
         vmid: int,
         name: str,
-        template: str,
+        source_template: str,
         cloudinit_config: CloudInitConfig,
         hardware: Dict[str, Any],
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
-    ) -> str:
-        """Create VM with CloudInit configuration."""
-        storage_id = storage or self.client.default_storage
-        bridge_id = bridge or self.client.default_bridge
-
-        # Create the base VM first
+        snippet_storage: Optional[str] = None,
+        timeout: int = 900,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Clone a Proxmox template and configure native Cloud-Init."""
         cores = hardware.get("cores", 2)
         memory_mb = hardware.get("memory_mb", 2048)
         disk_gb = hardware.get("disk_gb", 20)
+        payload = cloudinit_config.to_proxmox_payload()
 
-        # Create VM with cloud-init specific configuration
-        vm_params = {
-            "vmid": vmid,
-            "name": name,
-            "cores": cores,
-            "memory": memory_mb,
-            "scsihw": "virtio-scsi-pci",
-            "agent": 1,
-            "ostype": "l26",
-            "serial0": "socket",
-            "vga": "serial0",
-            "scsi0": f"{storage_id}:{disk_gb}",
-            "net0": f"virtio,bridge={bridge_id}",
-            "ide2": f"{storage_id}:cloudinit",  # CloudInit drive
-        }
-
-        upid = self.client.api.nodes(node).qemu.post(**vm_params)
-
-        # Create and attach CloudInit ISO
-        iso_path = f"/tmp/cloudinit-{vmid}.iso"
-        cloudinit_config.create_iso(
-            iso_path, instance_id=f"vm-{vmid}", local_hostname=name
+        return self.client.create_cloudinit_vm(
+            node=node,
+            vmid=vmid,
+            name=name,
+            template=source_template,
+            cores=cores,
+            memory_mb=memory_mb,
+            disk_gb=disk_gb,
+            storage=storage,
+            bridge=bridge,
+            cloudinit_params=payload.native_params,
+            user_data=payload.custom_user_data,
+            snippet_storage=snippet_storage,
+            timeout=timeout,
+            poll_interval=poll_interval,
         )
-
-        # Upload ISO to storage and attach to VM
-        self.client.upload_iso(node, storage_id, iso_path)
-
-        # Clean up temporary ISO
-        os.unlink(iso_path)
-
-        return upid
 
     def prompt_for_config(self, template: str) -> CloudInitConfig:
         """Interactive prompt for CloudInit configuration."""

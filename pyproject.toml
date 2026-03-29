@@ -38,6 +38,9 @@ dev = [
 proxmox-mcp = "proxmox_mcp.server:main"
 proxmox-mcp-release-patch = "proxmox_mcp.release:main"
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [tool.setuptools.package-dir]
 "" = "src"
 

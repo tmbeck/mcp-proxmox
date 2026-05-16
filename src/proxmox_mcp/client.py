@@ -18,6 +18,21 @@ from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
 VM_DISK_PREFIXES = ("ide", "sata", "scsi", "virtio")
 VM_UNUSED_DISK_PREFIX = "unused"
+
+VM_USB_PREFIX = "usb"
+VM_USB_MAX_SLOTS = 14  # Proxmox 8+ supports usb0..usb14 with xhci
+
+VM_PCI_PREFIX = "hostpci"
+VM_PCI_MAX_SLOTS = 16  # Proxmox 8+ supports hostpci0..hostpci15
+
+# host=VID:PID  (lowercase hex, 4-digit each)
+_USB_VIDPID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{4}$")
+# host=<bus>-<port>[.<port>...]  e.g. 1-2 or 1-2.4
+_USB_BUSPORT_RE = re.compile(r"^\d+-\d+(?:\.\d+)*$")
+# PCI address: [DDDD:]BB:DD.F  domain optional
+_PCI_ADDR_RE = re.compile(r"^(?:[0-9a-f]{4}:)?[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$")
+# Cluster mapping names: letters, digits, dash, underscore
+_MAPPING_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 TESTED_PROXMOX_VE_VERSION = "9.1.6"
 TESTED_PROXMOX_VE_SERIES = (9, 1)
 TESTED_PROXMOX_VE_SERIES_LABEL = "9.1.x"
@@ -867,6 +882,258 @@ class ProxmoxClient:
     def vm_nic_remove(self, node: str, vmid: int, slot: int) -> Dict[str, Any]:
         upid = self._api.nodes(node).qemu(vmid).config.put(delete=f"net{slot}")
         return {"upid": upid, "removed": f"net{slot}"}
+
+    # -------- USB passthrough (hot-pluggable) --------
+    def list_host_usb(self, node: str) -> List[Dict[str, Any]]:
+        return self._api.nodes(node).hardware.usb.get()
+
+    def list_cluster_usb_mappings(self) -> List[Dict[str, Any]]:
+        return self._api.cluster.mapping.usb.get()
+
+    @staticmethod
+    def _parse_usb_value(value: str) -> Dict[str, Any]:
+        parts = [p.strip() for p in str(value).split(",") if p.strip()]
+        parsed: Dict[str, Any] = {"raw": value}
+        for part in parts:
+            if "=" not in part:
+                continue
+            key, val = part.split("=", 1)
+            if key == "host":
+                if val == "spice":
+                    parsed["spice"] = True
+                elif _USB_VIDPID_RE.match(val):
+                    parsed["host_vendor_product"] = val
+                elif _USB_BUSPORT_RE.match(val):
+                    parsed["host_bus_port"] = val
+                else:
+                    parsed["host"] = val
+            elif key == "mapping":
+                parsed["mapping"] = val
+            elif key == "usb3":
+                parsed["usb3"] = val in ("1", "true", "yes")
+        return parsed
+
+    def list_vm_usb(self, node: str, vmid: int) -> List[Dict[str, Any]]:
+        config = self.vm_config(node, vmid)
+        out: List[Dict[str, Any]] = []
+        for key, value in config.items():
+            if not (key.startswith(VM_USB_PREFIX) and key[len(VM_USB_PREFIX):].isdigit()):
+                continue
+            entry = {
+                "device": key,
+                "slot": int(key[len(VM_USB_PREFIX):]),
+                "config": value,
+                **self._parse_usb_value(value),
+            }
+            out.append(entry)
+        return sorted(out, key=lambda e: e["slot"])
+
+    @staticmethod
+    def _build_usb_value(
+        host: Optional[str],
+        mapping: Optional[str],
+        spice: bool,
+        usb3: bool,
+    ) -> str:
+        sources = sum(1 for v in (host, mapping, spice) if v)
+        if sources != 1:
+            raise ValueError(
+                "Provide exactly one of host, mapping, or spice=True"
+            )
+        if host is not None:
+            if not (_USB_VIDPID_RE.match(host) or _USB_BUSPORT_RE.match(host)):
+                raise ValueError(
+                    f"Invalid USB host '{host}'. Expected VID:PID (4-hex:4-hex) "
+                    "or bus-port (e.g. 1-2 or 1-2.4)"
+                )
+            parts = [f"host={host}"]
+        elif mapping is not None:
+            if not _MAPPING_NAME_RE.match(mapping):
+                raise ValueError(
+                    f"Invalid mapping name '{mapping}'"
+                )
+            parts = [f"mapping={mapping}"]
+        else:
+            parts = ["host=spice"]
+        if usb3:
+            parts.append("usb3=1")
+        return ",".join(parts)
+
+    def vm_usb_add(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        host: Optional[str] = None,
+        mapping: Optional[str] = None,
+        spice: bool = False,
+        usb3: bool = False,
+        slot: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        value = self._build_usb_value(host, mapping, spice, usb3)
+        config = self.vm_config(node, vmid)
+        used = {
+            int(k[len(VM_USB_PREFIX):])
+            for k in config
+            if k.startswith(VM_USB_PREFIX) and k[len(VM_USB_PREFIX):].isdigit()
+        }
+        if slot is not None:
+            if slot < 0 or slot >= VM_USB_MAX_SLOTS:
+                raise ValueError(
+                    f"slot must be in [0, {VM_USB_MAX_SLOTS - 1}]"
+                )
+            if slot in used:
+                raise ValueError(f"usb{slot} is already in use")
+            chosen = slot
+        else:
+            chosen = 0
+            while chosen in used:
+                chosen += 1
+            if chosen >= VM_USB_MAX_SLOTS:
+                raise ValueError(
+                    f"No free USB slots (0..{VM_USB_MAX_SLOTS - 1} all in use)"
+                )
+        device = f"{VM_USB_PREFIX}{chosen}"
+        upid = self._api.nodes(node).qemu(vmid).config.put(**{device: value})
+        return {"upid": upid, "added": device, "config": value}
+
+    def vm_usb_remove(self, node: str, vmid: int, slot: int) -> Dict[str, Any]:
+        device = f"{VM_USB_PREFIX}{slot}"
+        upid = self._api.nodes(node).qemu(vmid).config.put(delete=device)
+        return {"upid": upid, "removed": device}
+
+    # -------- PCI passthrough (NOT hot-pluggable; change applies on next start) --------
+    def list_host_pci(self, node: str) -> List[Dict[str, Any]]:
+        return self._api.nodes(node).hardware.pci.get()
+
+    def list_cluster_pci_mappings(self) -> List[Dict[str, Any]]:
+        return self._api.cluster.mapping.pci.get()
+
+    @staticmethod
+    def _parse_pci_value(value: str) -> Dict[str, Any]:
+        parts = [p.strip() for p in str(value).split(",") if p.strip()]
+        parsed: Dict[str, Any] = {"raw": value}
+        # First bare token (no =) is the host address shorthand
+        for part in parts:
+            if "=" not in part:
+                if _PCI_ADDR_RE.match(part):
+                    parsed["host"] = part
+                continue
+            key, val = part.split("=", 1)
+            if key == "host":
+                parsed["host"] = val
+            elif key == "mapping":
+                parsed["mapping"] = val
+            elif key == "mdev":
+                parsed["mdev"] = val
+            elif key == "pcie":
+                parsed["pcie"] = val in ("1", "true", "yes")
+            elif key == "rombar":
+                parsed["rombar"] = val in ("1", "true", "yes")
+            elif key == "x-vga":
+                parsed["x_vga"] = val in ("1", "true", "yes")
+            elif key == "romfile":
+                parsed["romfile"] = val
+        return parsed
+
+    def list_vm_pci(self, node: str, vmid: int) -> List[Dict[str, Any]]:
+        config = self.vm_config(node, vmid)
+        out: List[Dict[str, Any]] = []
+        for key, value in config.items():
+            if not (key.startswith(VM_PCI_PREFIX) and key[len(VM_PCI_PREFIX):].isdigit()):
+                continue
+            entry = {
+                "device": key,
+                "slot": int(key[len(VM_PCI_PREFIX):]),
+                "config": value,
+                **self._parse_pci_value(value),
+            }
+            out.append(entry)
+        return sorted(out, key=lambda e: e["slot"])
+
+    @staticmethod
+    def _build_pci_value(
+        host: Optional[str],
+        mapping: Optional[str],
+        pcie: bool,
+        rombar: Optional[bool],
+        x_vga: bool,
+        mdev: Optional[str],
+        romfile: Optional[str],
+    ) -> str:
+        if (host is None) == (mapping is None):
+            raise ValueError("Provide exactly one of host or mapping")
+        if host is not None:
+            if not _PCI_ADDR_RE.match(host):
+                raise ValueError(
+                    f"Invalid PCI address '{host}'. Expected [DDDD:]BB:DD.F "
+                    "(e.g. 0000:01:00.0 or 01:00.0)"
+                )
+            parts = [f"host={host}"]
+        else:
+            assert mapping is not None
+            if not _MAPPING_NAME_RE.match(mapping):
+                raise ValueError(f"Invalid mapping name '{mapping}'")
+            parts = [f"mapping={mapping}"]
+        if pcie:
+            parts.append("pcie=1")
+        if rombar is False:
+            parts.append("rombar=0")
+        if x_vga:
+            parts.append("x-vga=1")
+        if mdev:
+            parts.append(f"mdev={mdev}")
+        if romfile:
+            parts.append(f"romfile={romfile}")
+        return ",".join(parts)
+
+    def vm_pci_add(
+        self,
+        node: str,
+        vmid: int,
+        *,
+        host: Optional[str] = None,
+        mapping: Optional[str] = None,
+        pcie: bool = False,
+        rombar: Optional[bool] = None,
+        x_vga: bool = False,
+        mdev: Optional[str] = None,
+        romfile: Optional[str] = None,
+        slot: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        value = self._build_pci_value(
+            host, mapping, pcie, rombar, x_vga, mdev, romfile
+        )
+        config = self.vm_config(node, vmid)
+        used = {
+            int(k[len(VM_PCI_PREFIX):])
+            for k in config
+            if k.startswith(VM_PCI_PREFIX) and k[len(VM_PCI_PREFIX):].isdigit()
+        }
+        if slot is not None:
+            if slot < 0 or slot >= VM_PCI_MAX_SLOTS:
+                raise ValueError(
+                    f"slot must be in [0, {VM_PCI_MAX_SLOTS - 1}]"
+                )
+            if slot in used:
+                raise ValueError(f"hostpci{slot} is already in use")
+            chosen = slot
+        else:
+            chosen = 0
+            while chosen in used:
+                chosen += 1
+            if chosen >= VM_PCI_MAX_SLOTS:
+                raise ValueError(
+                    f"No free PCI slots (0..{VM_PCI_MAX_SLOTS - 1} all in use)"
+                )
+        device = f"{VM_PCI_PREFIX}{chosen}"
+        upid = self._api.nodes(node).qemu(vmid).config.put(**{device: value})
+        return {"upid": upid, "added": device, "config": value}
+
+    def vm_pci_remove(self, node: str, vmid: int, slot: int) -> Dict[str, Any]:
+        device = f"{VM_PCI_PREFIX}{slot}"
+        upid = self._api.nodes(node).qemu(vmid).config.put(delete=device)
+        return {"upid": upid, "removed": device}
 
     def vm_firewall_get(self, node: str, vmid: int) -> Dict[str, Any]:
         opts = self._api.nodes(node).qemu(vmid).firewall.options.get()

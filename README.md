@@ -159,27 +159,38 @@ If you prefer not to use an env file, Codex can also pass the individual Proxmox
 
 ### Claude Code
 
-Project-local `.mcp.json` example:
+The repo ships a project-scoped `.mcp.json` that points at `${PROXMOX_ENV_FILE:-${HOME}/.config/proxmox-mcp/proxmox.env}` — no secrets in the file, so it's safe to commit. Open the project in Claude Code and accept the MCP server prompt.
+
+`.mcp.json.example` shows four alternative shapes: env-file (default), inline env, multiple Proxmox servers, and `uv run` from a repo checkout. Copy the variant you want into `.mcp.json` (or merge into your global MCP config).
+
+Equivalent CLI form for ad-hoc setup:
+
+```bash
+claude mcp add --transport stdio --scope project --env PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env" proxmox-mcp -- proxmox-mcp
+```
+
+#### Targeting multiple Proxmox clusters
+
+The Proxmox API URL and token are read once when the client connects — tools accept a `node` argument (a Proxmox node within a cluster), but **not** a per-call `api_url`/hostname. To drive multiple Proxmox clusters from one agent session, register one MCP server entry per cluster:
 
 ```json
 {
   "mcpServers": {
-    "proxmox-mcp": {
+    "proxmox-prod": {
       "type": "stdio",
       "command": "proxmox-mcp",
-      "env": {
-        "PROXMOX_ENV_FILE": "/Users/you/.config/proxmox-mcp/proxmox.env"
-      }
+      "env": { "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/prod.env" }
+    },
+    "proxmox-lab": {
+      "type": "stdio",
+      "command": "proxmox-mcp",
+      "env": { "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/lab.env" }
     }
   }
 }
 ```
 
-Equivalent CLI form:
-
-```bash
-claude mcp add --transport stdio --scope project --env PROXMOX_ENV_FILE="$HOME/.config/proxmox-mcp/proxmox.env" proxmox-mcp -- proxmox-mcp
-```
+The agent then selects a cluster by tool prefix (e.g. `mcp__proxmox-prod__proxmox-vm-info` vs `mcp__proxmox-lab__proxmox-vm-info`). The server also supports a multi-cluster `PROXMOX_CLUSTERS=...` mode (see `src/proxmox_mcp/utils.py`), but the core compute tools always use the default cluster — multi-server entries are the practical pattern today.
 
 ### Why this differs from repo-local `.env`
 
@@ -358,6 +369,20 @@ Format below per tool:
   - Add/remove NICs (bridge, model, VLAN)
 - `proxmox-vm-firewall-get` / `proxmox-vm-firewall-set`
   - Get/set per-VM firewall state and rules
+- `proxmox-host-usb-list` / `proxmox-cluster-usb-mappings` / `proxmox-vm-usb-list` / `proxmox-vm-usb-add` / `proxmox-vm-usb-remove`
+  - Discover host USB devices and cluster USB mappings; attach/detach USB devices to a VM. Hot-pluggable.
+  - Attach by VID:PID, bus-port, cluster mapping, or SPICE redirection
+  - Examples:
+    - `{ "name": "web01", "host": "0951:1666", "usb3": true }`
+    - `{ "name": "web01", "mapping": "yubikey-shared" }`
+    - `{ "name": "web01", "slot": 0 }` (remove)
+- `proxmox-host-pci-list` / `proxmox-cluster-pci-mappings` / `proxmox-vm-pci-list` / `proxmox-vm-pci-add` / `proxmox-vm-pci-remove`
+  - Discover host PCI devices and cluster PCI mappings; attach/detach PCI devices to a VM
+  - **Not hot-pluggable**: when the VM is running, config persists but takes effect on next start (response includes `requires_restart: true`)
+  - Attach by PCI address or cluster mapping; options for `pcie`, `rombar`, `x_vga`, `mdev`
+  - Examples:
+    - `{ "name": "gpu01", "host": "0000:01:00.0", "pcie": true, "x_vga": true }`
+    - `{ "name": "gpu01", "mapping": "gpu-pool", "mdev": "nvidia-256" }`
 
 ### Native Cloud-Init workflow
 

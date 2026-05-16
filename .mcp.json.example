@@ -1,0 +1,63 @@
+{
+  "_comment": "Examples of project-scoped MCP server config for Claude Code. Copy the variant you need into .mcp.json (or merge into your global MCP config). The committed .mcp.json uses pattern (A) by default.",
+
+  "_variant_A_single_cluster_env_file": {
+    "mcpServers": {
+      "proxmox-mcp": {
+        "type": "stdio",
+        "command": "proxmox-mcp",
+        "env": {
+          "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/proxmox.env"
+        }
+      }
+    }
+  },
+
+  "_variant_B_single_cluster_inline_env": {
+    "mcpServers": {
+      "proxmox-mcp": {
+        "type": "stdio",
+        "command": "proxmox-mcp",
+        "env": {
+          "PROXMOX_API_URL": "https://proxmox.example.com:8006",
+          "PROXMOX_TOKEN_ID": "root@pam!mcp-proxmox",
+          "PROXMOX_TOKEN_SECRET": "REPLACE-ME",
+          "PROXMOX_VERIFY": "true",
+          "PROXMOX_DEFAULT_NODE": "pve",
+          "PROXMOX_DEFAULT_STORAGE": "local-lvm",
+          "PROXMOX_DEFAULT_BRIDGE": "vmbr0"
+        }
+      }
+    }
+  },
+
+  "_variant_C_multiple_proxmox_servers": {
+    "_note": "One MCP entry per Proxmox cluster. The calling agent picks the cluster by tool prefix (e.g. mcp__proxmox-prod__... vs mcp__proxmox-lab__...). Per-call hostname routing on a single MCP entry is not supported by the core compute tools.",
+    "mcpServers": {
+      "proxmox-prod": {
+        "type": "stdio",
+        "command": "proxmox-mcp",
+        "env": { "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/prod.env" }
+      },
+      "proxmox-lab": {
+        "type": "stdio",
+        "command": "proxmox-mcp",
+        "env": { "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/lab.env" }
+      }
+    }
+  },
+
+  "_variant_D_uv_run_from_repo": {
+    "_note": "Run from the repo checkout without `uv tool install .`. Useful for development.",
+    "mcpServers": {
+      "proxmox-mcp": {
+        "type": "stdio",
+        "command": "uv",
+        "args": ["run", "python", "-m", "proxmox_mcp.server"],
+        "env": {
+          "PROXMOX_ENV_FILE": "${HOME}/.config/proxmox-mcp/proxmox.env"
+        }
+      }
+    }
+  }
+}

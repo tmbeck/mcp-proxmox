@@ -657,6 +657,189 @@ def register_core_compute_tools(
             }
         return client.vm_nic_remove(vm_node, vm_vmid, slot=slot)
 
+    @server.tool("proxmox-host-usb-list")
+    async def proxmox_host_usb_list(node: str) -> List[Dict[str, Any]]:
+        """List USB devices visible on a Proxmox host."""
+        return get_client().list_host_usb(node)
+
+    @server.tool("proxmox-cluster-usb-mappings")
+    async def proxmox_cluster_usb_mappings() -> List[Dict[str, Any]]:
+        """List cluster-wide USB device mappings (Proxmox 8+)."""
+        return get_client().list_cluster_usb_mappings()
+
+    @server.tool("proxmox-vm-usb-list")
+    async def proxmox_vm_usb_list(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List USB passthrough entries (usbN=) configured on a VM."""
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        return {
+            "vmid": vm_vmid,
+            "node": vm_node,
+            "devices": client.list_vm_usb(vm_node, vm_vmid),
+        }
+
+    @server.tool("proxmox-vm-usb-add")
+    async def proxmox_vm_usb_add(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        host: Optional[str] = None,
+        mapping: Optional[str] = None,
+        spice: bool = False,
+        usb3: bool = False,
+        slot: Optional[int] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Attach a USB device to a VM. Provide exactly one of: host="VID:PID" (e.g. "0951:1666"), host="<bus>-<port>" (e.g. "1-2"), mapping="<cluster-map-name>", or spice=true. Hot-pluggable on a running VM."""
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-usb-add",
+                "params": {
+                    "node": vm_node,
+                    "vmid": vm_vmid,
+                    "host": host,
+                    "mapping": mapping,
+                    "spice": spice,
+                    "usb3": usb3,
+                    "slot": slot,
+                },
+            }
+        return client.vm_usb_add(
+            vm_node,
+            vm_vmid,
+            host=host,
+            mapping=mapping,
+            spice=spice,
+            usb3=usb3,
+            slot=slot,
+        )
+
+    @server.tool("proxmox-vm-usb-remove")
+    async def proxmox_vm_usb_remove(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        slot: int = 0,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Detach a USB device from a VM by slot index. Hot-pluggable on a running VM."""
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-usb-remove",
+                "params": {"node": vm_node, "vmid": vm_vmid, "slot": slot},
+            }
+        return client.vm_usb_remove(vm_node, vm_vmid, slot=slot)
+
+    @server.tool("proxmox-host-pci-list")
+    async def proxmox_host_pci_list(node: str) -> List[Dict[str, Any]]:
+        """List PCI devices visible on a Proxmox host."""
+        return get_client().list_host_pci(node)
+
+    @server.tool("proxmox-cluster-pci-mappings")
+    async def proxmox_cluster_pci_mappings() -> List[Dict[str, Any]]:
+        """List cluster-wide PCI device mappings (Proxmox 8+)."""
+        return get_client().list_cluster_pci_mappings()
+
+    @server.tool("proxmox-vm-pci-list")
+    async def proxmox_vm_pci_list(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """List PCI passthrough entries (hostpciN=) configured on a VM."""
+        client = get_client()
+        vm_vmid, vm_node, _ = client.resolve_vm(vmid=vmid, name=name, node=node)
+        return {
+            "vmid": vm_vmid,
+            "node": vm_node,
+            "devices": client.list_vm_pci(vm_node, vm_vmid),
+        }
+
+    @server.tool("proxmox-vm-pci-add")
+    async def proxmox_vm_pci_add(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        host: Optional[str] = None,
+        mapping: Optional[str] = None,
+        pcie: bool = False,
+        rombar: Optional[bool] = None,
+        x_vga: bool = False,
+        mdev: Optional[str] = None,
+        romfile: Optional[str] = None,
+        slot: Optional[int] = None,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Attach a PCI device to a VM. Provide exactly one of host="[DDDD:]BB:DD.F" (e.g. "0000:01:00.0") or mapping="<cluster-map-name>". PCI passthrough is NOT hot-pluggable — if the VM is running, config persists but takes effect on next start (requires_restart=true in response)."""
+        client = get_client()
+        vm_vmid, vm_node, res = client.resolve_vm(vmid=vmid, name=name, node=node)
+        running = str(res.get("status", "")).lower() == "running"
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-pci-add",
+                "requires_restart": running,
+                "params": {
+                    "node": vm_node,
+                    "vmid": vm_vmid,
+                    "host": host,
+                    "mapping": mapping,
+                    "pcie": pcie,
+                    "rombar": rombar,
+                    "x_vga": x_vga,
+                    "mdev": mdev,
+                    "romfile": romfile,
+                    "slot": slot,
+                },
+            }
+        result = client.vm_pci_add(
+            vm_node,
+            vm_vmid,
+            host=host,
+            mapping=mapping,
+            pcie=pcie,
+            rombar=rombar,
+            x_vga=x_vga,
+            mdev=mdev,
+            romfile=romfile,
+            slot=slot,
+        )
+        result["requires_restart"] = running
+        return result
+
+    @server.tool("proxmox-vm-pci-remove")
+    async def proxmox_vm_pci_remove(
+        vmid: Optional[int] = None,
+        name: Optional[str] = None,
+        node: Optional[str] = None,
+        slot: int = 0,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Detach a PCI device from a VM by slot index. NOT hot-pluggable — if the VM is running, removal takes effect on next start (requires_restart=true in response)."""
+        client = get_client()
+        vm_vmid, vm_node, res = client.resolve_vm(vmid=vmid, name=name, node=node)
+        running = str(res.get("status", "")).lower() == "running"
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "vm-pci-remove",
+                "requires_restart": running,
+                "params": {"node": vm_node, "vmid": vm_vmid, "slot": slot},
+            }
+        result = client.vm_pci_remove(vm_node, vm_vmid, slot=slot)
+        result["requires_restart"] = running
+        return result
+
     @server.tool("proxmox-vm-firewall-get")
     async def proxmox_vm_firewall_get(
         vmid: Optional[int] = None,

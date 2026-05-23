@@ -144,11 +144,18 @@ def register_provisioning_tools(
 
         Requirements:
           - Image host must be in `PROXMOX_ALLOWED_URLS` (unless private/local).
-          - API token needs `Datastore.AllocateTemplate` on `/storage/{image_storage}`
-            (e.g. role `PVEDatastoreAdmin`). With token Privilege Separation
-            enabled, the grant must be on the API Token itself, not its user.
-          - API token needs `VM.Allocate`, `VM.Config.*`, and `Datastore.AllocateSpace`
-            on `/storage/{storage}` for the VM disk operations.
+          - The Proxmox `download-url` endpoint requires BOTH:
+              * `Datastore.AllocateTemplate` on `/storage/{image_storage}`
+                (e.g. role `PVEDatastoreAdmin`), AND
+              * `Sys.Audit` + `Sys.Modify` on `/` (e.g. role `PVEAdmin` or
+                a custom role granting those two privileges).
+            The second requirement exists because `download-url` can probe
+            arbitrary URLs from the cluster and is therefore gated behind
+            root-level sys privileges.
+          - For the VM disk operations: `VM.Allocate`, `VM.Config.*`, and
+            `Datastore.AllocateSpace` on `/storage/{storage}`.
+          - With token Privilege Separation ON, every grant above must be
+            on the API Token itself, not its user.
         """
         client = get_client()
         node_id = node or client.default_node

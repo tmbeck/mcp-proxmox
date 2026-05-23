@@ -1,3 +1,6 @@
+# Local MCP server config (per-machine overrides)
+.mcp.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

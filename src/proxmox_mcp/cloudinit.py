@@ -61,6 +61,20 @@ class CloudInitConfig:
                 "openssh-server",
             ],
         },
+        "ubuntu-26.04": {
+            "name": "Ubuntu 26.04 LTS",
+            "image_url": "https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img",
+            "default_user": "ubuntu",
+            "package_manager": "apt",
+            "default_packages": [
+                "curl",
+                "wget",
+                "git",
+                "htop",
+                "vim",
+                "openssh-server",
+            ],
+        },
         "fedora-39": {
             "name": "Fedora 39",
             "image_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/39/Cloud/x86_64/images/Fedora-Cloud-Base-39-1.5.x86_64.qcow2",

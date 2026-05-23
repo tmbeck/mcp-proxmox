@@ -167,6 +167,7 @@ def register_core_compute_tools(
         storage: Optional[str] = None,
         bridge: Optional[str] = None,
         iso: Optional[str] = None,
+        boot_order: Optional[str] = None,
         dry_run: bool = False,
         wait: bool = False,
         timeout: int = 900,
@@ -192,6 +193,7 @@ def register_core_compute_tools(
                     "storage": storage or client.default_storage,
                     "bridge": bridge or client.default_bridge,
                     "iso": iso,
+                    "boot_order": boot_order,
                 },
             }
         upid = client.create_vm(
@@ -204,6 +206,7 @@ def register_core_compute_tools(
             storage=storage or client.default_storage,
             bridge=bridge or client.default_bridge,
             iso=iso,
+            boot_order=boot_order,
         )
         result: Dict[str, Any] = {"upid": upid}
         if wait:
@@ -583,6 +586,7 @@ def register_core_compute_tools(
         sshkeys: Optional[str] = None,
         ciuser: Optional[str] = None,
         cipassword: Optional[str] = None,
+        cicustom: Optional[str] = None,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         client = get_client()
@@ -596,9 +600,11 @@ def register_core_compute_tools(
             params["ciuser"] = ciuser
         if cipassword is not None:
             params["cipassword"] = cipassword
+        if cicustom is not None:
+            params["cicustom"] = cicustom
         if not params:
             raise ValueError(
-                "Provide at least one of: ipconfig0, sshkeys, ciuser, cipassword"
+                "Provide at least one of: ipconfig0, sshkeys, ciuser, cipassword, cicustom"
             )
         if dry_run:
             return {

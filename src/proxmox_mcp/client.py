@@ -6,6 +6,7 @@ import ssl
 import time
 import tempfile
 import ipaddress
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -73,6 +74,21 @@ def _parse_disk_size_gb(config_value: str) -> Optional[int]:
     multipliers = {"K": 1 / (1024 * 1024), "M": 1 / 1024, "G": 1, "T": 1024}
     size_gb = size * multipliers[unit]
     return max(1, int(size_gb) if size_gb.is_integer() else int(size_gb) + 1)
+
+
+def _encode_sshkeys(value: str) -> str:
+    """URL-encode SSH keys for the Proxmox `sshkeys` config field.
+
+    Proxmox stores the value as URL-encoded text with a trailing %0A.
+    If the input already round-trips through urllib.parse.unquote to a
+    different string, it's already encoded and is returned unchanged.
+    """
+    if not value:
+        return value
+    if "%" in value and urllib.parse.unquote(value) != value:
+        return value
+    text = value if value.endswith("\n") else value + "\n"
+    return urllib.parse.quote(text, safe="")
 
 
 class _TLSHttpAdapter(HTTPAdapter):
@@ -611,10 +627,10 @@ class ProxmoxClient:
         scsihw: str = "virtio-scsi-pci",
         agent: bool = True,
         ostype: str = "l26",
+        boot_order: Optional[str] = None,
     ) -> str:
         storage_id = storage or self.default_storage or "local-lvm"
         bridge_id = bridge or self.default_bridge or "vmbr0"
-        scsi0 = f"{storage_id}:{max(disk_gb, 1)}"
         params: Dict[str, Any] = {
             "vmid": vmid,
             "name": name,
@@ -623,13 +639,18 @@ class ProxmoxClient:
             "scsihw": scsihw,
             "agent": int(agent),
             "ostype": ostype,
-            "scsi0": scsi0,
             "net0": f"virtio,bridge={bridge_id}",
         }
+        if disk_gb > 0:
+            params["scsi0"] = f"{storage_id}:{disk_gb}"
         if iso:
             # ide2 expects format storage:iso/filename.iso,media=cdrom
             params["ide2"] = iso if ":" in iso else f"{storage_id}:iso/{iso}"
             params["boot"] = "order=scsi0;ide2;net0"
+        if boot_order is not None:
+            params["boot"] = (
+                boot_order if "=" in boot_order else f"order={boot_order}"
+            )
         return self._api.nodes(node).qemu.post(**params)
 
     def delete_vm(self, node: str, vmid: int, purge: bool = True) -> str:
@@ -741,6 +762,9 @@ class ProxmoxClient:
     def cloudinit_set(
         self, node: str, vmid: int, params: Dict[str, Any]
     ) -> Dict[str, Any]:
+        params = dict(params)
+        if "sshkeys" in params and params["sshkeys"] is not None:
+            params["sshkeys"] = _encode_sshkeys(params["sshkeys"])
         upid = self._api.nodes(node).qemu(vmid).config.put(**params)
         return {"upid": upid} if isinstance(upid, str) else {"result": upid}
 
@@ -1497,6 +1521,174 @@ class ProxmoxClient:
             )
 
         result["upid"] = final_upid or clone_upid
+        return result
+
+    def build_cloud_image_template(
+        self,
+        *,
+        node: str,
+        vmid: int,
+        name: str,
+        image_url: str,
+        image_filename: Optional[str] = None,
+        image_storage: str = "local",
+        storage: Optional[str] = None,
+        bridge: Optional[str] = None,
+        cores: int = 2,
+        memory_mb: int = 2048,
+        disk_gb: int = 32,
+        machine: str = "q35",
+        bios: str = "ovmf",
+        cpu: str = "host",
+        scsihw: str = "virtio-scsi-pci",
+        ostype: str = "l26",
+        serial_console: bool = True,
+        agent: bool = True,
+        ciuser: Optional[str] = None,
+        sshkeys: Optional[str] = None,
+        ipconfig0: Optional[str] = "ip=dhcp",
+        cipassword: Optional[str] = None,
+        cicustom: Optional[str] = None,
+        tags: Optional[str] = None,
+        boot_disk: str = "virtio0",
+        cloudinit_disk: str = "scsi1",
+        convert_to_template: bool = True,
+        timeout: int = 1800,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Build a cloud-init-ready template from a cloud image URL.
+
+        Uses Proxmox REST `download-url` (PVE 7.2+) + disk `import-from`
+        (PVE 8+). No SSH to the node required.
+        """
+        require_allowed_url(
+            image_url,
+            purpose=f"cloud image fetch for VM {vmid}",
+            user_provided=False,
+        )
+        storage_id = storage or self.default_storage or "local-lvm"
+        bridge_id = bridge or self.default_bridge or "vmbr0"
+        filename = image_filename or os.path.basename(
+            urllib.parse.urlparse(image_url).path
+        )
+        if not filename:
+            raise ValueError(
+                "Could not derive image_filename from image_url; pass image_filename explicitly"
+            )
+
+        result: Dict[str, Any] = {
+            "node": node,
+            "vmid": vmid,
+            "name": name,
+            "image_url": image_url,
+            "image_filename": filename,
+            "image_storage": image_storage,
+            "disk_storage": storage_id,
+            "steps": [],
+        }
+
+        def _wait(upid: Any, label: str) -> None:
+            if isinstance(upid, str):
+                status = self.wait_task(
+                    upid, node=node, timeout=timeout, poll_interval=poll_interval
+                )
+                result["steps"].append({"step": label, "upid": upid, "status": status})
+            else:
+                result["steps"].append({"step": label, "result": upid})
+
+        # 1. Download cloud image (skip if already on storage)
+        target_volid = f"{image_storage}:iso/{filename}"
+        existing = self.storage_content(node, image_storage)
+        if any(item.get("volid") == target_volid for item in existing):
+            result["steps"].append({"step": "download-image", "skipped": True})
+        else:
+            upid = (
+                self._api.nodes(node)
+                .storage(image_storage)("download-url")
+                .post(url=image_url, content="iso", filename=filename)
+            )
+            _wait(upid, "download-image")
+
+        # 2. Create shell VM (no disk yet)
+        create_params: Dict[str, Any] = {
+            "vmid": vmid,
+            "name": name,
+            "ostype": ostype,
+            "cores": cores,
+            "sockets": 1,
+            "memory": memory_mb,
+            "machine": machine,
+            "bios": bios,
+            "cpu": cpu,
+            "scsihw": scsihw,
+            "agent": int(agent),
+            "net0": f"virtio,bridge={bridge_id}",
+        }
+        if serial_console:
+            create_params["serial0"] = "socket"
+            create_params["vga"] = "serial0"
+        if tags:
+            create_params["tags"] = tags
+        _wait(self._api.nodes(node).qemu.post(**create_params), "create-vm")
+
+        # 3. EFI disk for UEFI builds
+        if bios == "ovmf":
+            _wait(
+                self._api.nodes(node)
+                .qemu(vmid)
+                .config.put(efidisk0=f"{storage_id}:0,pre-enrolled-keys=0"),
+                "efidisk",
+            )
+
+        # 4. Import main disk from cloud image via import-from
+        import_spec = (
+            f"{storage_id}:0,import-from={target_volid},discard=on"
+        )
+        _wait(
+            self._api.nodes(node)
+            .qemu(vmid)
+            .config.put(**{boot_disk: import_spec}),
+            "import-disk",
+        )
+
+        # 5. Resize imported disk up to target size (image is ~3-5 GiB raw)
+        config = self.vm_config(node, vmid)
+        current_gb = _parse_disk_size_gb(config.get(boot_disk, "")) or 0
+        if disk_gb > current_gb > 0:
+            _wait(
+                self.resize_vm_disk(node, vmid, boot_disk, disk_gb - current_gb),
+                "resize-disk",
+            )
+
+        # 6. Cloud-init drive
+        _wait(
+            self._api.nodes(node)
+            .qemu(vmid)
+            .config.put(**{cloudinit_disk: f"{storage_id}:cloudinit"}),
+            "cloudinit-drive",
+        )
+
+        # 7. Cloud-init params + boot order in one PUT
+        ci_params: Dict[str, Any] = {"boot": f"order={boot_disk}"}
+        if ciuser is not None:
+            ci_params["ciuser"] = ciuser
+        if sshkeys is not None:
+            ci_params["sshkeys"] = _encode_sshkeys(sshkeys)
+        if ipconfig0 is not None:
+            ci_params["ipconfig0"] = ipconfig0
+        if cipassword is not None:
+            ci_params["cipassword"] = cipassword
+        if cicustom is not None:
+            ci_params["cicustom"] = cicustom
+        _wait(
+            self._api.nodes(node).qemu(vmid).config.put(**ci_params),
+            "cloudinit-config",
+        )
+
+        # 8. Convert to template
+        if convert_to_template:
+            result["template_upid"] = self.template_vm(node, vmid)
+
         return result
 
     def download_os_template(

@@ -102,6 +102,120 @@ def register_provisioning_tools(
             "template_info": template_info,
         }
 
+    @server.tool("proxmox-build-cloud-image-template")
+    async def proxmox_build_cloud_image_template(
+        node: Optional[str] = None,
+        vmid: int = 0,
+        name: str = "",
+        template: Optional[str] = None,
+        image_url: Optional[str] = None,
+        image_filename: Optional[str] = None,
+        image_storage: str = "local",
+        storage: Optional[str] = None,
+        bridge: Optional[str] = None,
+        cores: int = 2,
+        memory_mb: int = 2048,
+        disk_gb: int = 32,
+        machine: str = "q35",
+        bios: str = "ovmf",
+        cpu: str = "host",
+        scsihw: str = "virtio-scsi-pci",
+        ostype: str = "l26",
+        serial_console: bool = True,
+        agent: bool = True,
+        ciuser: Optional[str] = None,
+        sshkeys: Optional[str] = None,
+        ipconfig0: Optional[str] = "ip=dhcp",
+        cipassword: Optional[str] = None,
+        cicustom: Optional[str] = None,
+        tags: Optional[str] = None,
+        boot_disk: str = "virtio0",
+        cloudinit_disk: str = "scsi1",
+        convert_to_template: bool = True,
+        dry_run: bool = False,
+        timeout: int = 1800,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Build a cloud-init template VM from a cloud image URL.
+
+        Pass either `template` (an OS_TEMPLATES key such as "ubuntu-26.04")
+        or `image_url` directly. Uses Proxmox REST `download-url` (PVE 7.2+)
+        and disk `import-from` (PVE 8+); no SSH to the node required.
+
+        Requirements:
+          - Image host must be in `PROXMOX_ALLOWED_URLS` (unless private/local).
+          - API token needs `Datastore.AllocateTemplate` on `/storage/{image_storage}`
+            (e.g. role `PVEDatastoreAdmin`). With token Privilege Separation
+            enabled, the grant must be on the API Token itself, not its user.
+          - API token needs `VM.Allocate`, `VM.Config.*`, and `Datastore.AllocateSpace`
+            on `/storage/{storage}` for the VM disk operations.
+        """
+        client = get_client()
+        node_id = node or client.default_node
+        if not node_id:
+            raise ValueError("node is required (or set PROXMOX_DEFAULT_NODE)")
+        if vmid <= 0 or not name:
+            raise ValueError("vmid > 0 and non-empty name are required")
+        if not image_url and not template:
+            raise ValueError("Provide either template (OS_TEMPLATES key) or image_url")
+        if template:
+            if template not in CloudInitConfig.OS_TEMPLATES:
+                raise ValueError(
+                    f"Unknown template: {template}. Known: {list(CloudInitConfig.OS_TEMPLATES.keys())}"
+                )
+            image_url = image_url or CloudInitConfig.OS_TEMPLATES[template]["image_url"]
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": "build-cloud-image-template",
+                "params": {
+                    "node": node_id,
+                    "vmid": vmid,
+                    "name": name,
+                    "template": template,
+                    "image_url": image_url,
+                    "image_storage": image_storage,
+                    "storage": storage or client.default_storage,
+                    "bridge": bridge or client.default_bridge,
+                    "disk_gb": disk_gb,
+                    "tags": tags,
+                    "convert_to_template": convert_to_template,
+                },
+            }
+
+        return client.build_cloud_image_template(
+            node=node_id,
+            vmid=vmid,
+            name=name,
+            image_url=image_url,
+            image_filename=image_filename,
+            image_storage=image_storage,
+            storage=storage or client.default_storage,
+            bridge=bridge or client.default_bridge,
+            cores=cores,
+            memory_mb=memory_mb,
+            disk_gb=disk_gb,
+            machine=machine,
+            bios=bios,
+            cpu=cpu,
+            scsihw=scsihw,
+            ostype=ostype,
+            serial_console=serial_console,
+            agent=agent,
+            ciuser=ciuser,
+            sshkeys=sshkeys,
+            ipconfig0=ipconfig0,
+            cipassword=cipassword,
+            cicustom=cicustom,
+            tags=tags,
+            boot_disk=boot_disk,
+            cloudinit_disk=cloudinit_disk,
+            convert_to_template=convert_to_template,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
+
     @server.tool("proxmox-create-vm-cloudinit")
     async def proxmox_create_vm_cloudinit(
         node: Optional[str] = None,

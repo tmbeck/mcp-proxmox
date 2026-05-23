@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from proxmox_mcp.client import ProxmoxClient
+from proxmox_mcp.client import ProxmoxClient, _encode_sshkeys
 from proxmox_mcp.cloudinit import CloudInitConfig
 
 
@@ -234,3 +234,51 @@ def test_create_cloudinit_vm_clones_template_before_resize(monkeypatch) -> None:
         {"node": "pve1", "vmid": 101, "disk": "scsi0", "size_gb": 12}
     ]
     assert result["upid"] == "UPID:resize"
+
+
+def test_encode_sshkeys_encodes_raw_input() -> None:
+    encoded = _encode_sshkeys("ssh-ed25519 AAA/BBB+CCC")
+    assert encoded == "ssh-ed25519%20AAA%2FBBB%2BCCC%0A"
+
+
+def test_encode_sshkeys_passes_through_when_already_encoded() -> None:
+    pre = "ssh-ed25519%20AAA%2FBBB%0A"
+    assert _encode_sshkeys(pre) == pre
+
+
+def test_cloudinit_set_auto_encodes_raw_sshkeys(monkeypatch) -> None:
+    client = _build_client()
+    captured: list[dict[str, Any]] = []
+
+    class _FakeConfig:
+        def put(self, **kwargs: Any) -> str:
+            captured.append(kwargs)
+            return "UPID:set"
+
+    class _FakeQemu:
+        def __init__(self) -> None:
+            self.config = _FakeConfig()
+
+    class _FakeNode:
+        def qemu(self, vmid: int) -> _FakeQemu:
+            return _FakeQemu()
+
+    class _FakeApi:
+        def nodes(self, node: str) -> _FakeNode:
+            return _FakeNode()
+
+    client._api = _FakeApi()
+
+    client.cloudinit_set(
+        "pve1",
+        8002,
+        {
+            "ciuser": "tbeck",
+            "sshkeys": "ssh-ed25519 AAA",
+            "cicustom": "vendor=local:snippets/vendor.yaml",
+        },
+    )
+
+    assert captured[0]["sshkeys"] == "ssh-ed25519%20AAA%0A"
+    assert captured[0]["cicustom"] == "vendor=local:snippets/vendor.yaml"
+    assert captured[0]["ciuser"] == "tbeck"

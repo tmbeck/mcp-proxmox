@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from requests.adapters import HTTPAdapter
 from proxmoxer import ProxmoxAPI
+from proxmoxer.core import ProxmoxResource  # type: ignore[import-untyped]
 
 from .utils import parse_api_url, read_env, split_token_id, require_allowed_url
 
@@ -110,6 +111,32 @@ def configure_proxmox_https_session(session: requests.Session) -> requests.Sessi
     """
     session.mount("https://", _TLSHttpAdapter(ssl.create_default_context()))
     return session
+
+
+_UNSAFE_PATH_CHARS = re.compile(r"[?#%\s\x00-\x1f\x7f]")
+_proxmox_resource_call = ProxmoxResource.__call__
+
+
+def _validated_proxmox_resource_call(self: Any, resource_id: Any = None) -> Any:
+    """Reject API path segments that could escape the intended endpoint.
+
+    proxmoxer splits string IDs on "/" and joins them into the URL unescaped, so
+    a node/storage/snapshot name like "../access/users" or "x?y=1" would retarget
+    the request.
+    """
+    if isinstance(resource_id, bytes):
+        resource_id = resource_id.decode()
+    if isinstance(resource_id, str) and (
+        _UNSAFE_PATH_CHARS.search(resource_id)
+        or any(part in {".", ".."} for part in resource_id.split("/"))
+    ):
+        raise ValueError(f"Invalid Proxmox API path segment: {resource_id!r}")
+    return _proxmox_resource_call(self, resource_id)
+
+
+# ponytail: global patch on proxmoxer's single entry point for data-driven path
+# segments; replace if proxmoxer ever validates/quotes IDs itself.
+ProxmoxResource.__call__ = _validated_proxmox_resource_call  # type: ignore[method-assign]
 
 
 def get_default_lxc_password() -> str:

@@ -610,7 +610,12 @@ def register_core_compute_tools(
             return {
                 "dry_run": True,
                 "action": "cloudinit-set",
-                "params": {"node": vm_node, "vmid": vm_vmid, **params},
+                "params": {
+                    "node": vm_node,
+                    "vmid": vm_vmid,
+                    **params,
+                    **({"cipassword": "***"} if "cipassword" in params else {}),
+                },
             }
         return client.cloudinit_set(vm_node, vm_vmid, params)
 

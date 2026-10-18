@@ -8,35 +8,47 @@ version = "0.5.2"
 description = "Advanced Proxmox MCP Server (Model Context Protocol)"
 readme = "README.md"
 authors = [{ name = "bsahane" }]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
-  "mcp[cli]>=1.2.0",
-  "proxmoxer>=2.0.1",
-  "requests>=2.31.0",
-  "python-dotenv>=1.0.1",
-  "PyYAML>=6.0.1",
-  "jsonschema>=4.20.0",
+  "mcp[cli]>=1.30.0,<2",
+  "proxmoxer>=2.3.0",
+  "requests>=2.33.0",
+  "python-dotenv>=1.2.2",
+  "PyYAML>=6.0.3",
+  "jsonschema>=4.26.0",
 ]
 keywords = ["mcp", "proxmox", "model-context-protocol"]
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
 ]
 
 [dependency-groups]
 dev = [
-  "pytest>=7.4.3",
-  "pytest-asyncio>=0.21.1",
-  "black>=23.11.0",
-  "flake8>=6.1.0",
-  "mypy>=1.7.1,<2",
-  "ruff>=0.9.0",
+  "pytest>=9.0",
+  "pytest-asyncio>=1.0",
+  "black>=26.1.0",
+  "flake8>=7.3.0",
+  "mypy>=1.20,<2",
+  "ruff>=0.15.0",
 ]
 
 [project.scripts]
 proxmox-mcp = "proxmox_mcp.server:main"
 proxmox-mcp-release-patch = "proxmox_mcp.release:main"
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+# Pre-0.17 default rule set; ruff 0.17 widened defaults (UP/BLE/I/...).
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.14"
 
 [tool.uv]
 exclude-newer = "7 days"

@@ -102,14 +102,21 @@ class _TLSHttpAdapter(HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 
-def configure_proxmox_https_session(session: requests.Session) -> requests.Session:
+def configure_proxmox_https_session(
+    session: requests.Session, verify: bool = True
+) -> requests.Session:
     """Mount a stable HTTPS adapter for Proxmox API traffic.
 
     Some environments negotiate TLS to Proxmox successfully with curl but hit
     intermittent EOF/handshake issues through the default Python requests stack.
     Mounting an explicit SSL context on the session makes the behavior reliable.
     """
-    session.mount("https://", _TLSHttpAdapter(ssl.create_default_context()))
+    context = ssl.create_default_context()
+    if not verify:
+        # urllib3 sets verify_mode=CERT_NONE when verify=False, which raises
+        # ValueError while check_hostname is still enabled.
+        context.check_hostname = False
+    session.mount("https://", _TLSHttpAdapter(context))
     return session
 
 
@@ -187,7 +194,7 @@ class ProxmoxClient:
             verify_ssl=verify,
             timeout=timeout,
         )
-        configure_proxmox_https_session(self._api._store["session"])
+        configure_proxmox_https_session(self._api._store["session"], verify=verify)
 
     @classmethod
     def from_env(cls) -> "ProxmoxClient":

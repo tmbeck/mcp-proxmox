@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ssl
+
 import pytest
 import requests
 
@@ -15,7 +17,18 @@ def test_configure_proxmox_https_session_mounts_custom_adapter() -> None:
 
     configure_proxmox_https_session(session)
 
-    assert isinstance(session.adapters["https://"], _TLSHttpAdapter)
+    adapter = session.adapters["https://"]
+    assert isinstance(adapter, _TLSHttpAdapter)
+    assert adapter.ssl_context.check_hostname is True
+
+
+def test_verify_false_context_accepts_cert_none() -> None:
+    session = requests.Session()
+
+    configure_proxmox_https_session(session, verify=False)
+
+    context = session.adapters["https://"].ssl_context
+    context.verify_mode = ssl.CERT_NONE  # what urllib3 does when verify=False
 
 
 def _client() -> ProxmoxClient:

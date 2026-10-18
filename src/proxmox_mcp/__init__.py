@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 
 _EXPORTS = {
     "ProxmoxClient": ("client", "ProxmoxClient"),
